@@ -25,7 +25,6 @@ public Q_SLOTS:
     // D-Bus methods
     bool PerformUpdate();
     bool PerformRescue();
-    bool PerformSelfUpdate();
     QVariantMap GetSystemInfo();
     bool CheckConnectivity();
     void Cancel();
@@ -43,7 +42,6 @@ private:
 
     void handleUpdateOperation();
     void handleRescueOperation();
-    void handleSelfUpdateOperation();
 
     void emitProgress(OperationStatus status, int percentage,
                      const QString& message, const QString& details = QString());

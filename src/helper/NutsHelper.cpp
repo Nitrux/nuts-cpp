@@ -309,45 +309,6 @@ void NutsHelper::handleRescueOperation() {
         Q_EMIT OperationCompleted(true, "System restored successfully");
 }
 
-bool NutsHelper::PerformSelfUpdate() {
-    Logger::instance().info("Starting self-update operation");
-
-    m_currentOperation = OperationType::SelfUpdate;
-    m_cancelled = false;
-
-    QThread* thread = QThread::create([this]() {
-        handleSelfUpdateOperation();
-    });
-
-    connect(thread, &QThread::finished, thread, &QThread::deleteLater);
-    thread->start();
-
-    return true;
-}
-
-void NutsHelper::handleSelfUpdateOperation() {
-    emitProgress(OperationStatus::CheckingConnectivity, 10, "Checking connectivity");
-
-        if (!m_sysInterface->checkInternetConnectivity()) {
-            Q_EMIT OperationFailed("No internet connectivity");
-            return;
-        }
-
-        if (!m_sysInterface->checkGitHubConnectivity()) {
-            Q_EMIT OperationFailed("Cannot reach GitHub");
-            return;
-        }
-
-        emitProgress(OperationStatus::ApplyingUpdate, 30, "Updating NUTS");
-
-        if (!m_updateManager->selfUpdate(Config::instance().branch())) {
-            Q_EMIT OperationFailed("Self-update failed");
-            return;
-        }
-
-        Q_EMIT OperationCompleted(true, "NUTS updated successfully. Reboot to load changes.");
-}
-
 QVariantMap NutsHelper::GetSystemInfo() {
     SystemInfo info = m_sysInterface->getSystemInfo();
 

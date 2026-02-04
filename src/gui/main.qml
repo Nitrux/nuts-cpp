@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2026 Nitrux Latinoamericana S.C.
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -8,6 +5,19 @@ import org.mauikit.controls as Maui
 
 Maui.ApplicationWindow {
     id: root
+
+    title: qsTr("Nitrux Update Tool System")
+
+    // Debug flags for testing UI states
+    readonly property bool debugMode: true  // Set to true to test update UI
+    readonly property bool debugUpdateAvailable: debugMode ? true : nutsClient.updateAvailable
+    readonly property string debugUpdateVersion: debugMode ? "6.0.0" : nutsClient.updateVersion
+    readonly property string debugUpdateSize: debugMode ? "1.5 GB" : nutsClient.updateSize
+    readonly property string debugUpdateNotes: debugMode ? "Nitrux 6.0.0 combines the latest software updates, bug fixes, and performance improvements with ready-to-use hardware support. This release continues the evolution of our immutable foundation.\n\n• Improved system stability\n\n• Updated kernel to 6.18.6\n\n• Performance improvements\n\n• Bug fixes and security updates\n\n [Learn more...](https://nxos.org/changelog/release-announcement-nitrux-6-0-0/)" : nutsClient.updateNotes
+
+    // These properties enable compositor-level transparency
+    color: "transparent"
+    background: null
 
     Maui.WindowBlur {
         view: root
@@ -29,25 +39,17 @@ Maui.ApplicationWindow {
         id: mainPage
         anchors.fill: parent
         headerMargins: Maui.Style.contentMargins
+        background: null
 
         headBar.visible: true
 
-        // 1. Move Distro Info to Left Content
-        headBar.leftContent: Label {
-            text: nutsClient.distributionInfo
-            visible: nutsClient.distributionInfo !== ""
-            verticalAlignment: Text.AlignVCenter
-            font.weight: Font.DemiBold
-        }
-
-        // 2. Move Buttons to Right Content (Icon Only)
-        headBar.rightContent: [
+        headBar.leftContent: [
             Button {
                 display: AbstractButton.IconOnly
                 icon.name: "folder-download"
                 enabled: nutsClient.connected && !nutsClient.busy
                 onClicked: updateDialog.open()
-                
+
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Update System")
@@ -55,24 +57,26 @@ Maui.ApplicationWindow {
 
             Button {
                 display: AbstractButton.IconOnly
-                icon.name: "view-refresh"
+                icon.name: "system-help"
                 enabled: nutsClient.connected && !nutsClient.busy
                 onClicked: rescueDialog.open()
 
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Rescue")
-            },
+            }
+        ]
 
+        headBar.rightContent: [
             Button {
                 display: AbstractButton.IconOnly
-                icon.name: "document-revert"
+                icon.name: "view-refresh"
                 enabled: nutsClient.connected && !nutsClient.busy
-                onClicked: selfUpdateDialog.open()
+                onClicked: nutsClient.checkForUpdates()
 
                 ToolTip.delay: 500
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Self-Update")
+                ToolTip.text: qsTr("Check for Updates")
             },
 
             ToolSeparator {
@@ -80,7 +84,6 @@ Maui.ApplicationWindow {
                 topPadding: 10
             },
 
-            // 3. Move Menu to Right (Standard Maui Position)
             Maui.ToolButtonMenu {
                 icon.name: "overflow-menu"
 
@@ -98,102 +101,130 @@ Maui.ApplicationWindow {
             }
         ]
 
-        ColumnLayout {
-            anchors.centerIn: parent
-            width: Math.min(parent.width * 0.8, 600)
+        Maui.ScrollColumn {
+            anchors.fill: parent
             spacing: Maui.Style.space.big
+            visible: nutsClient.busy
 
-            // Icon
-            Maui.Icon {
-                Layout.alignment: Qt.AlignHCenter
-                source: "system-software-update"
-                implicitHeight: 128
-                implicitWidth: 128
-            }
-
-            // Title
-            Label {
-                Layout.alignment: Qt.AlignHCenter
-                text: qsTr("Nitrux Update Tool System")
-                font.pointSize: Maui.Style.fontSizes.huge
-                font.bold: true
-            }
-
-            // Status message
-            Label {
-                Layout.alignment: Qt.AlignHCenter
+            Maui.SectionHeader {
                 Layout.fillWidth: true
-                text: nutsClient.statusMessage || qsTr("Ready to update")
+                text1: qsTr("System Status")
+                text2: qsTr("Current system information and update status.")
+            }
+
+            Maui.FlexSectionItem {
+                label1.text: qsTr("Distribution")
+                label2.text: nutsClient.distributionInfo || qsTr("Unknown")
+                visible: nutsClient.distributionInfo !== ""
+            }
+
+            Maui.FlexSectionItem {
+                label1.text: qsTr("Status")
+                label2.text: nutsClient.statusMessage || qsTr("Ready to update")
+                label2.color: nutsClient.connected ? Maui.Theme.positiveTextColor : Maui.Theme.neutralTextColor
+            }
+
+            ProgressBar {
+                Layout.fillWidth: true
+                value: nutsClient.progressPercentage / 100.0
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: nutsClient.progressMessage
                 wrapMode: Text.WordWrap
-                horizontalAlignment: Text.AlignHCenter
                 visible: text !== ""
             }
 
-            // Progress bar
-            ProgressBar {
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignHCenter
-                value: nutsClient.progressPercentage / 100.0
-                visible: nutsClient.busy
-            }
-
-            // Progress message
-            Label {
-                Layout.alignment: Qt.AlignHCenter
-                text: nutsClient.progressMessage
-                color: Maui.Theme.textColor
-                visible: nutsClient.busy && text !== ""
-            }
-
-            // Note: Removed the RowLayout with buttons here (moved to headBar)
-
-            // Cancel button (shown when busy - kept in body)
             Button {
                 Layout.alignment: Qt.AlignHCenter
-                text: qsTr("Cancel")
+                text: qsTr("Cancel Operation")
                 icon.name: "process-stop"
-                visible: nutsClient.busy
                 onClicked: nutsClient.cancel()
             }
+        }
 
-            // Connection status
+        Maui.Holder {
+            anchors.fill: parent
+            visible: !nutsClient.busy && !debugUpdateAvailable
+            emoji: nutsClient.connected ? "dialog-ok-apply" : "network-disconnect"
+            title: nutsClient.connected
+                   ? qsTr("No Updates Available")
+                   : qsTr("Helper Disconnected")
+            body: nutsClient.connected
+                  ? qsTr("Your system is up to date.\nClick 'Check for Updates' to manually check again.")
+                  : qsTr("The update helper service is not running.")
+        }
+
+        // iOS-style update details view
+        Maui.ScrollColumn {
+            anchors.fill: parent
+            spacing: Maui.Style.space.big
+            visible: !nutsClient.busy && debugUpdateAvailable
+
+            // Update info with section header and button
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Maui.Style.space.medium
+
+                Maui.SectionHeader {
+                    Layout.fillWidth: true
+                    text1: qsTr("Software Update")
+                    text2: qsTr("A new system update is available.")
+                }
+
+                Button {
+                    text: qsTr("Update Now")
+                    onClicked: updateDialog.open()
+                }
+            }
+
+            // Version and size info
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Maui.Style.space.medium
+
+                Maui.Icon {
+                    source: "live-installer"
+                    implicitHeight: Maui.Style.iconSizes.big
+                    implicitWidth: Maui.Style.iconSizes.big
+                }
+
+                Maui.SectionHeader {
+                    Layout.fillWidth: true
+                    text1: qsTr("Nitrux ") + debugUpdateVersion
+                    text2: debugUpdateSize
+                }
+            }
+
+            // Release notes
             Label {
-                Layout.alignment: Qt.AlignHCenter
-                text: nutsClient.connected ? qsTr("Connected to helper") : qsTr("Disconnected from helper")
-                color: nutsClient.connected ? Maui.Theme.positiveTextColor : Maui.Theme.negativeTextColor
-                font.pointSize: Maui.Style.fontSizes.small
+                Layout.fillWidth: true
+                Layout.leftMargin: Maui.Style.space.big
+                Layout.rightMargin: Maui.Style.space.big
+                text: debugUpdateNotes
+                wrapMode: Text.WordWrap
+                textFormat: Text.MarkdownText
             }
         }
     }
 
-    // Update confirmation dialog
     Maui.InfoDialog {
         id: updateDialog
-        title: qsTr("Confirm Update")
-        message: qsTr("This will create a backup of your system and download the latest update. The system will reboot automatically after the update completes.\n\nDo you want to continue?")
+        title: qsTr("System Update")
+        message: qsTr("A backup will be created, and the system will reboot automatically after updating.\n\nContinue?")
         standardButtons: Dialog.Yes | Dialog.No
         onAccepted: nutsClient.performUpdate()
     }
 
-    // Rescue confirmation dialog
     Maui.InfoDialog {
         id: rescueDialog
-        title: qsTr("Confirm Rescue")
-        message: qsTr("This operation will restore your system from a backup. This should only be done from a Live session if your system is not bootable.\n\nDo you want to continue?")
+        title: qsTr("System Restore")
+        message: qsTr("Restoring will overwrite current system data. Ensure you are running from a Live session.\n\nContinue?")
         standardButtons: Dialog.Yes | Dialog.No
         onAccepted: nutsClient.performRescue()
     }
 
-    // Self-update confirmation dialog
-    Maui.InfoDialog {
-        id: selfUpdateDialog
-        title: qsTr("Confirm Self-Update")
-        message: qsTr("This will update the NUTS tool itself to the latest version from GitHub. You will need to reboot to load the changes.\n\nDo you want to continue?")
-        standardButtons: Dialog.Yes | Dialog.No
-        onAccepted: nutsClient.performSelfUpdate()
-    }
-
-    // Completion dialog
     Maui.InfoDialog {
         id: completionDialog
         property bool success: true
@@ -203,7 +234,6 @@ Maui.ApplicationWindow {
         standardButtons: Dialog.Ok
     }
 
-    // Error dialog
     Maui.InfoDialog {
         id: errorDialog
         property string errorMessage: ""
@@ -212,7 +242,6 @@ Maui.ApplicationWindow {
         standardButtons: Dialog.Ok
     }
 
-    // Logic Connections
     Connections {
         target: nutsClient
         function onOperationCompleted(success, message) {

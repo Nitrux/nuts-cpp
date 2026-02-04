@@ -178,33 +178,6 @@ bool UpdateManager::applyUpdate() {
     return true;
 }
 
-bool UpdateManager::selfUpdate(const QString& branch) {
-    Logger::instance().info("Performing self-update using branch: " + branch);
-
-    QString output, error;
-
-    // Mount dev in overlay
-    if (!m_sysInterface->executeInOverlay({"mount", "-t", "devtmpfs", "dev", "/dev"}, output, error)) {
-        Logger::instance().warning("Failed to mount /dev in overlay");
-    }
-
-    // Download nuts-sup
-    if (!downloadComponent("nuts-sup", branch)) {
-        Logger::instance().error("Failed to download nuts-sup component");
-        return false;
-    }
-
-    // Execute nuts-sup
-    if (!m_sysInterface->executeInOverlay({"nuts-sup"}, output, error)) {
-        Logger::instance().error("Self-update execution failed: " + error);
-        return false;
-    }
-
-    Logger::instance().success("Self-update completed");
-
-    return true;
-}
-
 bool UpdateManager::downloadComponent(const QString& componentName, const QString& branch) {
     QString url = QString("https://raw.githubusercontent.com/Nitrux/nuts/%1/tmp/%2").arg(branch, componentName);
     QString destination = "/usr/bin/" + componentName;

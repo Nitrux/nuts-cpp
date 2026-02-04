@@ -6,6 +6,11 @@
 #include <QDBusConnectionInterface>
 #include <QDebug>
 #include <QProcess>
+#include <QFile>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QRegularExpression>
 
 namespace Nuts {
 
@@ -135,48 +140,131 @@ void NutsClient::performRescue() {
     });
 }
 
-void NutsClient::performSelfUpdate() {
-    if (!m_connected || m_busy) {
-        return;
-    }
-
-    m_busy = true;
-    Q_EMIT busyChanged();
-
-    m_statusMessage = "Starting self-update...";
-    Q_EMIT statusMessageChanged();
-
-    showNotification("NUTS Self-Update", "Updating NUTS...", KNotification::Persistent);
-
-    QProcess* process = new QProcess(this);
-    process->start("pkexec", {"/usr/libexec/nuts-helper"});
-
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, process](int exitCode, QProcess::ExitStatus) {
-        process->deleteLater();
-
-        if (exitCode == 0) {
-            QDBusReply<bool> reply = m_helperInterface->call("PerformSelfUpdate");
-            if (!reply.isValid()) {
-                qWarning() << "Failed to call PerformSelfUpdate:" << reply.error().message();
-                m_busy = false;
-                Q_EMIT busyChanged();
-                onOperationFailed("Failed to start self-update: " + reply.error().message());
-            }
-        } else {
-            m_busy = false;
-            Q_EMIT busyChanged();
-            onOperationFailed("Authentication cancelled or failed");
-        }
-    });
-}
-
 void NutsClient::cancel() {
     if (!m_connected || !m_busy) {
         return;
     }
 
     m_helperInterface->call("Cancel");
+}
+
+void NutsClient::checkForUpdates() {
+    if (!m_connected || m_busy) {
+        return;
+    }
+
+    m_statusMessage = "Checking for updates...";
+    Q_EMIT statusMessageChanged();
+
+    // Read local VERSION from /etc/os-release
+    QFile localFile("/etc/os-release");
+    if (!localFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning() << "Failed to read /etc/os-release";
+        m_statusMessage = "Error reading system version";
+        Q_EMIT statusMessageChanged();
+        return;
+    }
+
+    QString localVersion;
+    QTextStream in(&localFile);
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        if (line.startsWith("VERSION=")) {
+            localVersion = line.mid(8).remove('"');
+            break;
+        }
+    }
+    localFile.close();
+
+    if (localVersion.isEmpty()) {
+        qWarning() << "VERSION not found in /etc/os-release";
+        return;
+    }
+
+    // Fetch remote os-release from GitHub
+    QNetworkAccessManager* manager = new QNetworkAccessManager(this);
+    QUrl remoteOsReleaseUrl("https://raw.githubusercontent.com/Nitrux/nitrux-base-files/refs/heads/main/etc/os-release");
+
+    QNetworkReply* reply = manager->get(QNetworkRequest(remoteOsReleaseUrl));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, localVersion, manager]() {
+        reply->deleteLater();
+        manager->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "Failed to fetch remote os-release:" << reply->errorString();
+            m_statusMessage = "Failed to check for updates";
+            Q_EMIT statusMessageChanged();
+            return;
+        }
+
+        QString remoteContent = reply->readAll();
+        QString remoteVersion;
+
+        QTextStream stream(&remoteContent);
+        while (!stream.atEnd()) {
+            QString line = stream.readLine();
+            if (line.startsWith("VERSION=")) {
+                remoteVersion = line.mid(8).remove('"');
+                break;
+            }
+        }
+
+        if (remoteVersion.isEmpty() || remoteVersion == localVersion) {
+            m_updateAvailable = false;
+            Q_EMIT updateAvailableChanged();
+            m_statusMessage = "No updates available";
+            Q_EMIT statusMessageChanged();
+            return;
+        }
+
+        // Check if OTA archive exists at SourceForge
+        QNetworkAccessManager* sfManager = new QNetworkAccessManager(this);
+        QString otaFilename = QString("nitrux-nx-desktop-plasma-amd64-%1.zsync").arg(remoteVersion);
+        QUrl sourceForgeUrl(QString("https://master.dl.sourceforge.net/project/nitruxos/Updates/%1").arg(otaFilename));
+
+        QNetworkReply* sfReply = sfManager->head(QNetworkRequest(sourceForgeUrl));
+        connect(sfReply, &QNetworkReply::finished, this, [this, sfReply, sfManager, remoteVersion]() {
+            sfReply->deleteLater();
+            sfManager->deleteLater();
+
+            if (sfReply->error() != QNetworkReply::NoError) {
+                m_updateAvailable = false;
+                Q_EMIT updateAvailableChanged();
+                m_statusMessage = "Update metadata found but OTA archive not available yet";
+                Q_EMIT statusMessageChanged();
+                return;
+            }
+
+            // Both conditions met - update is available
+            m_updateVersion = remoteVersion;
+
+            // Get file size
+            qint64 bytes = sfReply->header(QNetworkRequest::ContentLengthHeader).toLongLong();
+            m_updateSize = QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 2) + " GB";
+
+            // Fetch release notes
+            QNetworkAccessManager* notesManager = new QNetworkAccessManager(this);
+            QUrl notesUrl(QString("https://raw.githubusercontent.com/Nitrux/storage/master/Updates/nuts-summary-%1.md").arg(remoteVersion));
+
+            QNetworkReply* notesReply = notesManager->get(QNetworkRequest(notesUrl));
+            connect(notesReply, &QNetworkReply::finished, this, [this, notesReply, notesManager]() {
+                notesReply->deleteLater();
+                notesManager->deleteLater();
+
+                if (notesReply->error() == QNetworkReply::NoError) {
+                    m_updateNotes = notesReply->readAll();
+                } else {
+                    m_updateNotes = "Release notes not available.";
+                }
+
+                m_updateAvailable = true;
+                Q_EMIT updateAvailableChanged();
+                Q_EMIT updateInfoChanged();
+                m_statusMessage = QString("Update available: %1").arg(m_updateVersion);
+                Q_EMIT statusMessageChanged();
+            });
+        });
+    });
 }
 
 void NutsClient::refreshSystemInfo() {

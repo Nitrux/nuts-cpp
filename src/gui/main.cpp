@@ -2,7 +2,7 @@
 // Copyright 2026 Nitrux Latinoamericana S.C.
 
 #include "NutsClient.h"
-#include <QGuiApplication> // <--- CHANGED from QApplication
+#include <QGuiApplication>
 #include <QSurfaceFormat>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -22,8 +22,6 @@ int main(int argc, char* argv[]) {
     QSurfaceFormat::setDefaultFormat(format);
 
     // 2. INITIALIZE APPLICATION
-    // CRITICAL: Use QGuiApplication, not QApplication. 
-    // QApplication forces styles that can break QML transparency.
     QGuiApplication app(argc, argv);
 
     // 3. SETUP ORGANIZATION
@@ -43,7 +41,7 @@ int main(int argc, char* argv[]) {
     KAboutData about(QStringLiteral("nuts"),
                      i18n("Nitrux Update Tool System"),
                      QStringLiteral("3.0.0"),
-                     i18n("System update and backup utility"),
+                     i18n("A simple utility to update Nitrux."),
                      KAboutLicense::BSD_3_Clause,
                      i18n("© %1 Made by Nitrux | Built with MauiKit", QString::number(QDate::currentDate().year())));
 
@@ -57,9 +55,6 @@ int main(int argc, char* argv[]) {
     KAboutData::setApplicationData(about);
 
     // 7. INITIALIZE LOGIC BEFORE ENGINE
-    // CRITICAL: NutsClient must be declared BEFORE the engine.
-    // This ensures the engine is destroyed first, so QML doesn't try to read
-    // a deleted C++ object during shutdown.
     Nuts::NutsClient nutsClient;
 
     // 8. SETUP ENGINE

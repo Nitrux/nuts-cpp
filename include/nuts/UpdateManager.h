@@ -28,9 +28,6 @@ public:
     bool verifyUpdateArchive(const QString& filePath, const QString& expectedChecksum);
     bool applyUpdate();
 
-    // Self-update operations
-    bool selfUpdate(const QString& branch);
-
     // Getters for query info
     QString getMinTarget() const { return m_minTarget; }
     QString getUpdateUrl() const { return m_updateUrl; }

@@ -20,6 +20,10 @@ class NutsClient : public QObject {
     Q_PROPERTY(QString progressMessage READ progressMessage NOTIFY progressChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QString distributionInfo READ distributionInfo NOTIFY systemInfoChanged)
+    Q_PROPERTY(bool updateAvailable READ updateAvailable NOTIFY updateAvailableChanged)
+    Q_PROPERTY(QString updateVersion READ updateVersion NOTIFY updateInfoChanged)
+    Q_PROPERTY(QString updateSize READ updateSize NOTIFY updateInfoChanged)
+    Q_PROPERTY(QString updateNotes READ updateNotes NOTIFY updateInfoChanged)
 
 public:
     explicit NutsClient(QObject* parent = nullptr);
@@ -31,13 +35,17 @@ public:
     QString progressMessage() const { return m_progressMessage; }
     QString statusMessage() const { return m_statusMessage; }
     QString distributionInfo() const { return m_distributionInfo; }
+    bool updateAvailable() const { return m_updateAvailable; }
+    QString updateVersion() const { return m_updateVersion; }
+    QString updateSize() const { return m_updateSize; }
+    QString updateNotes() const { return m_updateNotes; }
 
 public Q_SLOTS:
     void performUpdate();
     void performRescue();
-    void performSelfUpdate();
     void cancel();
     void refreshSystemInfo();
+    void checkForUpdates();
 
 Q_SIGNALS:
     void connectedChanged();
@@ -47,6 +55,8 @@ Q_SIGNALS:
     void systemInfoChanged();
     void operationCompleted(bool success, const QString& message);
     void operationFailed(const QString& error);
+    void updateAvailableChanged();
+    void updateInfoChanged();
 
 private Q_SLOTS:
     void onProgressChanged(int status, int percentage, const QString& message, const QString& details);
@@ -67,6 +77,10 @@ private:
     QString m_progressMessage;
     QString m_statusMessage;
     QString m_distributionInfo;
+    bool m_updateAvailable{false};
+    QString m_updateVersion;
+    QString m_updateSize;
+    QString m_updateNotes;
 };
 
 } // namespace Nuts

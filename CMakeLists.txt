@@ -37,6 +37,7 @@ find_package(KF6 REQUIRED COMPONENTS
     CoreAddons
     I18n
     Notifications
+    WindowSystem
 )
 
 find_package(MauiKit4 REQUIRED)

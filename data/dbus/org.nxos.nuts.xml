@@ -12,10 +12,6 @@
       <arg direction="out" type="b" name="success"/>
     </method>
 
-    <method name="PerformSelfUpdate">
-      <arg direction="out" type="b" name="success"/>
-    </method>
-
     <method name="GetSystemInfo">
       <annotation name="org.qtproject.QtDBus.QtTypeName.Out0" value="QVariantMap"/>
       <arg direction="out" type="a{sv}" name="info"/>
