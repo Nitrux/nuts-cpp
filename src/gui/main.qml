@@ -10,6 +10,26 @@ Maui.ApplicationWindow {
     id: root
 
     title: qsTr("Nitrux Update Tool System")
+    width: 800
+    height: 600
+    visible: true
+
+    color: "transparent"
+    background: null
+
+    Maui.WindowBlur {
+        view: root
+        geometry: Qt.rect(0, 0, root.width, root.height)
+        windowRadius: Maui.Style.radiusV
+        enabled: true
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        color: Maui.Theme.backgroundColor
+        opacity: 0.76
+        radius: Maui.Style.radiusV
+    }
 
     Maui.Page {
         id: mainPage
@@ -22,7 +42,7 @@ Maui.ApplicationWindow {
             MenuItem {
                 text: qsTr("About")
                 icon.name: "help-about"
-                onTriggered: aboutDialog.open()
+                onTriggered: Maui.App.aboutDialog()
             }
 
             MenuItem {
@@ -137,7 +157,7 @@ Maui.ApplicationWindow {
     }
 
     // Update confirmation dialog
-    Maui.Dialog {
+    Maui.InfoDialog {
         id: updateDialog
 
         title: qsTr("Confirm Update")
@@ -151,7 +171,7 @@ Maui.ApplicationWindow {
     }
 
     // Rescue confirmation dialog
-    Maui.Dialog {
+    Maui.InfoDialog {
         id: rescueDialog
 
         title: qsTr("Confirm Rescue")
@@ -165,7 +185,7 @@ Maui.ApplicationWindow {
     }
 
     // Self-update confirmation dialog
-    Maui.Dialog {
+    Maui.InfoDialog {
         id: selfUpdateDialog
 
         title: qsTr("Confirm Self-Update")
@@ -178,38 +198,13 @@ Maui.ApplicationWindow {
         }
     }
 
-    // About dialog
-    Maui.AboutDialog {
-        id: aboutDialog
-
-        appName: "NUTS"
-        appDescription: qsTr("Nitrux Update Tool System")
-        appIcon: "system-software-update"
-        version: "3.0.0"
-        vendor: "Nitrux Latinoamericana S.C."
-        website: "https://nxos.org"
-        licenses: ["BSD-3-Clause"]
-        credits: [
-            {
-                name: "Uri Herrera",
-                email: "uri_herrera@nxos.org",
-                year: "2023-2026"
-            },
-            {
-                name: "Luis Lavaire",
-                email: "luis_lavaire@nxos.org",
-                year: "2023"
-            }
-        ]
-    }
-
     // Handle completion/failure
     Connections {
         target: nutsClient
 
         function onOperationCompleted(success, message) {
             completionDialog.success = success
-            completionDialog.message = message
+            completionDialog.dialogMessage = message
             completionDialog.open()
         }
 
@@ -220,20 +215,20 @@ Maui.ApplicationWindow {
     }
 
     // Completion dialog
-    Maui.Dialog {
+    Maui.InfoDialog {
         id: completionDialog
 
         property bool success: true
-        property string message: ""
+        property string dialogMessage: ""
 
         title: success ? qsTr("Success") : qsTr("Completed")
-        message: completionDialog.message
+        message: completionDialog.dialogMessage
 
         standardButtons: Dialog.Ok
     }
 
     // Error dialog
-    Maui.Dialog {
+    Maui.InfoDialog {
         id: errorDialog
 
         property string errorMessage: ""

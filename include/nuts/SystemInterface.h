@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "NutsExport.h"
 #include "Types.h"
 #include <QString>
 #include <QObject>
@@ -10,7 +11,7 @@
 
 namespace Nuts {
 
-class SystemInterface : public QObject {
+class NUTS_EXPORT SystemInterface : public QObject {
     Q_OBJECT
 
 public:
@@ -46,13 +47,15 @@ public:
     qint64 getDirectorySize(const QString& path);
     qint64 getAvailableSpace(const QString& path);
 
+    // Command execution
+    bool executeCommand(const QString& program, const QStringList& arguments,
+                       QString& output, QString& error, int timeout = 120000);
+
 Q_SIGNALS:
     void downloadProgress(int percentage, qint64 bytesReceived, qint64 bytesTotal);
     void commandOutput(const QString& output);
 
 private:
-    bool executeCommand(const QString& program, const QStringList& arguments,
-                       QString& output, QString& error, int timeout = 120000);
     bool executeCommandAsync(const QString& program, const QStringList& arguments,
                             std::function<void(QProcess*)> callback);
 };

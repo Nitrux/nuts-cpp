@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright 2026 Nitrux Latinoamericana S.C.
 
-#include "nutshelper.h"
+#include "NutsHelper.h"
 #include "nuts/Config.h"
 #include "nuts/Logger.h"
 #include <QCoreApplication>
@@ -127,8 +127,7 @@ bool NutsHelper::PerformUpdate() {
 }
 
 void NutsHelper::handleUpdateOperation() {
-    try {
-        // Check connectivity
+    // Check connectivity
         emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking connectivity");
 
         if (!m_sysInterface->checkInternetConnectivity()) {
@@ -210,10 +209,6 @@ void NutsHelper::handleUpdateOperation() {
 
         sync();
         system("reboot");
-
-    } catch (const std::exception& e) {
-        Q_EMIT OperationFailed(QString("Exception: %1").arg(e.what()));
-    }
 }
 
 bool NutsHelper::PerformRescue() {
@@ -233,8 +228,7 @@ bool NutsHelper::PerformRescue() {
 }
 
 void NutsHelper::handleRescueOperation() {
-    try {
-        emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking environment");
+    emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking environment");
 
         // Check if running from Live session
         if (!QFile::exists("/usr/bin/calamares")) {
@@ -313,10 +307,6 @@ void NutsHelper::handleRescueOperation() {
         m_sysInterface->unmountPartition(homeMount);
 
         Q_EMIT OperationCompleted(true, "System restored successfully");
-
-    } catch (const std::exception& e) {
-        Q_EMIT OperationFailed(QString("Exception: %1").arg(e.what()));
-    }
 }
 
 bool NutsHelper::PerformSelfUpdate() {
@@ -336,8 +326,7 @@ bool NutsHelper::PerformSelfUpdate() {
 }
 
 void NutsHelper::handleSelfUpdateOperation() {
-    try {
-        emitProgress(OperationStatus::CheckingConnectivity, 10, "Checking connectivity");
+    emitProgress(OperationStatus::CheckingConnectivity, 10, "Checking connectivity");
 
         if (!m_sysInterface->checkInternetConnectivity()) {
             Q_EMIT OperationFailed("No internet connectivity");
@@ -357,10 +346,6 @@ void NutsHelper::handleSelfUpdateOperation() {
         }
 
         Q_EMIT OperationCompleted(true, "NUTS updated successfully. Reboot to load changes.");
-
-    } catch (const std::exception& e) {
-        Q_EMIT OperationFailed(QString("Exception: %1").arg(e.what()));
-    }
 }
 
 QVariantMap NutsHelper::GetSystemInfo() {

@@ -3,12 +3,13 @@
 
 #pragma once
 
+#include "NutsExport.h"
 #include <QString>
 #include <QObject>
 
 namespace Nuts {
 
-class Config : public QObject {
+class NUTS_EXPORT Config : public QObject {
     Q_OBJECT
 
 public:

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "NutsExport.h"
 #include "Types.h"
 #include "SystemInterface.h"
 #include <QObject>
@@ -11,7 +12,7 @@
 
 namespace Nuts {
 
-class UpdateManager : public QObject {
+class NUTS_EXPORT UpdateManager : public QObject {
     Q_OBJECT
 
 public:

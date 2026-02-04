@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(nuts VERSION 3.0.0 LANGUAGES CXX)
 
+set(QT_MAJOR_VERSION 6)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -9,7 +10,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 # x86-64-v3 optimizations
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64-v3 -mtune=generic")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64-v3 -mtune=generic -fexceptions")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=x86-64-v3 -mtune=generic")
 
 # Find required packages
@@ -19,6 +20,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${CMAKE_MODULE_PATH})
 include(KDEInstallDirs)
 include(KDECompilerSettings NO_POLICY_SCOPE)
 include(KDECMakeSettings)
+include(ECMFindQmlModule)
 include(ECMSetupVersion)
 include(FeatureSummary)
 
@@ -28,6 +30,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Qml
     DBus
     Widgets
+    Network
 )
 
 find_package(KF6 REQUIRED COMPONENTS
@@ -37,6 +40,9 @@ find_package(KF6 REQUIRED COMPONENTS
 )
 
 find_package(MauiKit4 REQUIRED)
+
+ecm_find_qmlmodule(org.mauikit.controls 1.0)
+
 find_package(PolkitQt6-1 REQUIRED)
 
 # Build options

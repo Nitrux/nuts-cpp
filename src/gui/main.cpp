@@ -8,32 +8,58 @@
 #include <QIcon>
 #include <KLocalizedContext>
 #include <KLocalizedString>
+#include <MauiKit4/Core/mauiapp.h>
+#include <KAboutData>
+#include <QDate>
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
 
-    KLocalizedString::setApplicationDomain("nuts");
-
+    // 1. Setup Organization
     app.setOrganizationName(QStringLiteral("Nitrux"));
     app.setOrganizationDomain(QStringLiteral("nxos.org"));
     app.setApplicationName(QStringLiteral("NUTS"));
     app.setApplicationDisplayName(QStringLiteral("Nitrux Update Tool System"));
     app.setApplicationVersion(QStringLiteral("3.0.0"));
-    app.setWindowIcon(QIcon::fromTheme(QStringLiteral("system-software-update")));
 
-    // Create NUTS client
+    // 2. Setup Window Icon (Required for the About Dialog logo)
+    // Note: Ensure you have moved the assets folder to src/gui/assets/ so this path works
+    QIcon appIcon(QStringLiteral(":/assets/nuts-gui.svg")); 
+    app.setWindowIcon(appIcon);
+
+    // 3. Configure MauiKit
+    MauiApp::instance()->setIconName("qrc:/assets/nuts-gui.svg");
+
+    KLocalizedString::setApplicationDomain("nuts");
+
+    // 4. Setup About Data
+    KAboutData about(QStringLiteral("nuts"),
+                     i18n("Nitrux Update Tool System"),
+                     QStringLiteral("3.0.0"),
+                     i18n("System update and backup utility"),
+                     KAboutLicense::BSD_3_Clause,
+                     i18n("© %1 Made by Nitrux | Built with MauiKit", QString::number(QDate::currentDate().year())));
+
+    about.addAuthor(QStringLiteral("Uri Herrera"), i18n("Developer"), QStringLiteral("uri_herrera@nxos.org"));
+    about.addAuthor(QStringLiteral("Luis Lavaire"), i18n("Developer"), QStringLiteral("luis_lavaire@nxos.org"));
+
+    about.setHomepage("https://nxos.org");
+    about.setOrganizationDomain("nxos.org");
+    about.setDesktopFileName("org.nxos.nuts");
+    
+    // Set the logo using the icon we just loaded
+    about.setProgramLogo(app.windowIcon());
+
+    // CRITICAL: You must register the data!
+    KAboutData::setApplicationData(about);
+
+    // 5. Setup Engine
+    QQmlApplicationEngine engine;
     Nuts::NutsClient nutsClient;
 
-    // Create QML engine
-    QQmlApplicationEngine engine;
-
-    // Add KDE i18n support
     engine.rootContext()->setContextObject(new KLocalizedContext(&engine));
-
-    // Expose NutsClient to QML
     engine.rootContext()->setContextProperty(QStringLiteral("nutsClient"), &nutsClient);
 
-    // Load QML
     const QUrl url(QStringLiteral("qrc:/main.qml"));
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,

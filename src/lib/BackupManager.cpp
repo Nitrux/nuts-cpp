@@ -8,6 +8,8 @@
 #include <QFileInfo>
 #include <QProcess>
 #include <QThread>
+#include <QRegularExpression>
+#include <QTextStream>
 
 namespace Nuts {
 
@@ -51,7 +53,6 @@ bool BackupManager::executeXfsdump(const QString& device, const QString& outputF
         return false;
     }
 
-    int lastProgress = 0;
     while (process.state() == QProcess::Running) {
         process.waitForReadyRead(100);
         QString output = QString::fromUtf8(process.readAll());
@@ -282,7 +283,7 @@ QString BackupManager::readChecksum(const QString& checksumPath) {
     file.close();
 
     // Parse checksum from "checksum  filename" format
-    QStringList parts = line.split(QRegExp("\\s+"));
+    QStringList parts = line.split(QRegularExpression("\\s+"));
     if (parts.isEmpty()) {
         return QString();
     }

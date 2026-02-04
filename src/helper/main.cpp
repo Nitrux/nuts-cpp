@@ -7,6 +7,7 @@
 #include <QDBusConnection>
 #include <QDBusError>
 #include <iostream>
+#include <unistd.h>
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);

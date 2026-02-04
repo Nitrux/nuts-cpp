@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright 2026 Nitrux Latinoamericana S.C.
 
-#include "nutsclient.h"
+#include "NutsClient.h"
 #include <QDBusReply>
 #include <QDBusConnectionInterface>
 #include <QDebug>
@@ -79,7 +79,7 @@ void NutsClient::performUpdate() {
     process->start("pkexec", {"/usr/libexec/nuts-helper"});
 
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, process](int exitCode, QProcess::ExitStatus exitStatus) {
+            this, [this, process](int exitCode, QProcess::ExitStatus) {
         process->deleteLater();
 
         if (exitCode == 0) {
@@ -116,7 +116,7 @@ void NutsClient::performRescue() {
     process->start("pkexec", {"/usr/libexec/nuts-helper"});
 
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, process](int exitCode, QProcess::ExitStatus exitStatus) {
+            this, [this, process](int exitCode, QProcess::ExitStatus) {
         process->deleteLater();
 
         if (exitCode == 0) {
@@ -152,7 +152,7 @@ void NutsClient::performSelfUpdate() {
     process->start("pkexec", {"/usr/libexec/nuts-helper"});
 
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, process](int exitCode, QProcess::ExitStatus exitStatus) {
+            this, [this, process](int exitCode, QProcess::ExitStatus) {
         process->deleteLater();
 
         if (exitCode == 0) {

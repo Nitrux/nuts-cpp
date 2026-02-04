@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "NutsExport.h"
 #include "Types.h"
 #include "SystemInterface.h"
 #include <QObject>
@@ -10,7 +11,7 @@
 
 namespace Nuts {
 
-class BackupManager : public QObject {
+class NUTS_EXPORT BackupManager : public QObject {
     Q_OBJECT
 
 public:
@@ -36,6 +37,7 @@ Q_SIGNALS:
     void compressionProgress(int percentage);
     void decompressionProgress(int percentage);
     void restorationProgress(int percentage);
+    void commandOutput(const QString& output);
 
 private:
     SystemInterface* m_sysInterface;
