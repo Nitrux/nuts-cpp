@@ -1,0 +1,53 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+  <interface name="org.nxos.nuts">
+
+    <!-- Methods -->
+    <method name="PerformUpdate">
+      <arg direction="out" type="b" name="success"/>
+    </method>
+
+    <method name="PerformRescue">
+      <arg direction="out" type="b" name="success"/>
+    </method>
+
+    <method name="PerformSelfUpdate">
+      <arg direction="out" type="b" name="success"/>
+    </method>
+
+    <method name="GetSystemInfo">
+      <arg direction="out" type="a{sv}" name="info"/>
+    </method>
+
+    <method name="CheckConnectivity">
+      <arg direction="out" type="b" name="success"/>
+    </method>
+
+    <method name="Cancel">
+    </method>
+
+    <!-- Signals -->
+    <signal name="ProgressChanged">
+      <arg type="i" name="status"/>
+      <arg type="i" name="percentage"/>
+      <arg type="s" name="message"/>
+      <arg type="s" name="details"/>
+    </signal>
+
+    <signal name="OperationCompleted">
+      <arg type="b" name="success"/>
+      <arg type="s" name="message"/>
+    </signal>
+
+    <signal name="OperationFailed">
+      <arg type="s" name="error"/>
+    </signal>
+
+    <signal name="LogMessage">
+      <arg type="i" name="level"/>
+      <arg type="s" name="message"/>
+    </signal>
+
+  </interface>
+</node>

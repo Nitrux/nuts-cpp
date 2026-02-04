@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=NUTS
+GenericName=System Updater
+Comment=Nitrux Update Tool System
+Exec=nuts-gui
+Icon=system-software-update
+Terminal=false
+Type=Application
+Categories=Qt;KDE;System;Settings;
+Keywords=update;upgrade;system;nitrux;
+StartupNotify=true
+X-KDE-StartupNotify=true
