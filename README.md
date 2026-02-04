@@ -1,6 +1,6 @@
 # Nitrux Update Tool System (NUTS) | [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-Modern C++ rewrite of NUTS with MauiKit UI and PolicyKit integration.
+C++ and MauiKit rewrite of the Nitrux Update tool System.
 
 ## Introduction
 
@@ -11,12 +11,9 @@ We designed the Nitrux Update Tool System utility to update [Nitrux OS](https://
 
 ## Features
 
-- Modern MauiKit graphical interface
-- PolicyKit integration for secure privilege escalation
-- Real-time progress indicators and notifications
-- XFS backup and restore functionality
-- OTA-style atomic updates
-- Self-update capability
+- It creates a backup of the XFS partition using xfsdump and stores it locally.
+- Then, it downloads an OTA-style archive and updates the system atomically.
+- Rollbacks are handled offline and integrated into the Nitrux ecosystem through the Live session using xfsrestore.
 
 ## Configuration
 
