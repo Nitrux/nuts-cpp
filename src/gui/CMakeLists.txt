@@ -18,7 +18,6 @@ target_link_libraries(nuts-gui
         Qt6::Quick
         Qt6::Qml
         Qt6::DBus
-        Qt6::Widgets
         KF6::CoreAddons
         KF6::I18n
         KF6::Notifications

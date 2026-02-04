@@ -2,7 +2,8 @@
 // Copyright 2026 Nitrux Latinoamericana S.C.
 
 #include "NutsClient.h"
-#include <QApplication>
+#include <QGuiApplication> // <--- CHANGED from QApplication
+#include <QSurfaceFormat>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QIcon>
@@ -13,26 +14,32 @@
 #include <QDate>
 
 int main(int argc, char* argv[]) {
-    QApplication app(argc, argv);
 
-    // 1. Setup Organization
-    app.setOrganizationName(QStringLiteral("Nitrux"));
-    app.setOrganizationDomain(QStringLiteral("nxos.org"));
-    app.setApplicationName(QStringLiteral("NUTS"));
-    app.setApplicationDisplayName(QStringLiteral("Nitrux Update Tool System"));
-    app.setApplicationVersion(QStringLiteral("3.0.0"));
+    // 1. ENABLE WINDOW TRANSPARENCY
+    // This MUST be set before the QGuiApplication is created.
+    QSurfaceFormat format;
+    format.setAlphaBufferSize(8);
+    QSurfaceFormat::setDefaultFormat(format);
 
-    // 2. Setup Window Icon (Required for the About Dialog logo)
-    // Note: Ensure you have moved the assets folder to src/gui/assets/ so this path works
+    // 2. INITIALIZE APPLICATION
+    // CRITICAL: Use QGuiApplication, not QApplication. 
+    // QApplication forces styles that can break QML transparency.
+    QGuiApplication app(argc, argv);
+
+    // 3. SETUP ORGANIZATION
+    app.setOrganizationName("Nitrux");
+    app.setApplicationName("Nitrux Update Tool System");
+
+    // 4. SETUP WINDOW ICON
     QIcon appIcon(QStringLiteral(":/assets/nuts-gui.svg")); 
     app.setWindowIcon(appIcon);
 
-    // 3. Configure MauiKit
+    // 5. CONFIGURE MAUIKIT
     MauiApp::instance()->setIconName("qrc:/assets/nuts-gui.svg");
 
     KLocalizedString::setApplicationDomain("nuts");
 
-    // 4. Setup About Data
+    // 6. SETUP ABOUT DATA
     KAboutData about(QStringLiteral("nuts"),
                      i18n("Nitrux Update Tool System"),
                      QStringLiteral("3.0.0"),
@@ -41,21 +48,22 @@ int main(int argc, char* argv[]) {
                      i18n("© %1 Made by Nitrux | Built with MauiKit", QString::number(QDate::currentDate().year())));
 
     about.addAuthor(QStringLiteral("Uri Herrera"), i18n("Developer"), QStringLiteral("uri_herrera@nxos.org"));
-    about.addAuthor(QStringLiteral("Luis Lavaire"), i18n("Developer"), QStringLiteral("luis_lavaire@nxos.org"));
-
     about.setHomepage("https://nxos.org");
+    about.setProductName("nitrux/nuts");
     about.setOrganizationDomain("nxos.org");
     about.setDesktopFileName("org.nxos.nuts");
     
-    // Set the logo using the icon we just loaded
     about.setProgramLogo(app.windowIcon());
-
-    // CRITICAL: You must register the data!
     KAboutData::setApplicationData(about);
 
-    // 5. Setup Engine
-    QQmlApplicationEngine engine;
+    // 7. INITIALIZE LOGIC BEFORE ENGINE
+    // CRITICAL: NutsClient must be declared BEFORE the engine.
+    // This ensures the engine is destroyed first, so QML doesn't try to read
+    // a deleted C++ object during shutdown.
     Nuts::NutsClient nutsClient;
+
+    // 8. SETUP ENGINE
+    QQmlApplicationEngine engine;
 
     engine.rootContext()->setContextObject(new KLocalizedContext(&engine));
     engine.rootContext()->setContextProperty(QStringLiteral("nutsClient"), &nutsClient);

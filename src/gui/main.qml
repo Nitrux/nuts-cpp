@@ -9,14 +9,6 @@ import org.mauikit.controls as Maui
 Maui.ApplicationWindow {
     id: root
 
-    title: qsTr("Nitrux Update Tool System")
-    width: 800
-    height: 600
-    visible: true
-
-    color: "transparent"
-    background: null
-
     Maui.WindowBlur {
         view: root
         geometry: Qt.rect(0, 0, root.width, root.height)
@@ -29,33 +21,82 @@ Maui.ApplicationWindow {
         color: Maui.Theme.backgroundColor
         opacity: 0.76
         radius: Maui.Style.radiusV
+        border.color: Qt.rgba(1, 1, 1, 0)
+        border.width: 1
     }
 
     Maui.Page {
         id: mainPage
         anchors.fill: parent
+        headerMargins: Maui.Style.contentMargins
 
         headBar.visible: true
-        headBar.leftContent: Maui.ToolButtonMenu {
-            icon.name: "application-menu"
 
-            MenuItem {
-                text: qsTr("About")
-                icon.name: "help-about"
-                onTriggered: Maui.App.aboutDialog()
-            }
-
-            MenuItem {
-                text: qsTr("Quit")
-                icon.name: "application-exit"
-                onTriggered: Qt.quit()
-            }
-        }
-
-        headBar.rightContent: Label {
+        // 1. Move Distro Info to Left Content
+        headBar.leftContent: Label {
             text: nutsClient.distributionInfo
             visible: nutsClient.distributionInfo !== ""
+            verticalAlignment: Text.AlignVCenter
+            font.weight: Font.DemiBold
         }
+
+        // 2. Move Buttons to Right Content (Icon Only)
+        headBar.rightContent: [
+            Button {
+                display: AbstractButton.IconOnly
+                icon.name: "folder-download"
+                enabled: nutsClient.connected && !nutsClient.busy
+                onClicked: updateDialog.open()
+                
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Update System")
+            },
+
+            Button {
+                display: AbstractButton.IconOnly
+                icon.name: "view-refresh"
+                enabled: nutsClient.connected && !nutsClient.busy
+                onClicked: rescueDialog.open()
+
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Rescue")
+            },
+
+            Button {
+                display: AbstractButton.IconOnly
+                icon.name: "document-revert"
+                enabled: nutsClient.connected && !nutsClient.busy
+                onClicked: selfUpdateDialog.open()
+
+                ToolTip.delay: 500
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Self-Update")
+            },
+
+            ToolSeparator {
+                bottomPadding: 10
+                topPadding: 10
+            },
+
+            // 3. Move Menu to Right (Standard Maui Position)
+            Maui.ToolButtonMenu {
+                icon.name: "overflow-menu"
+
+                MenuItem {
+                    text: qsTr("About")
+                    icon.name: "help-about"
+                    onTriggered: Maui.App.aboutDialog()
+                }
+
+                MenuItem {
+                    text: qsTr("Quit")
+                    icon.name: "application-exit"
+                    onTriggered: Qt.quit()
+                }
+            }
+        ]
 
         ColumnLayout {
             anchors.centerIn: parent
@@ -104,40 +145,9 @@ Maui.ApplicationWindow {
                 visible: nutsClient.busy && text !== ""
             }
 
-            // Buttons
-            RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                spacing: Maui.Style.space.medium
+            // Note: Removed the RowLayout with buttons here (moved to headBar)
 
-                Button {
-                    text: qsTr("Update System")
-                    icon.name: "system-software-update"
-                    enabled: nutsClient.connected && !nutsClient.busy
-                    onClicked: {
-                        updateDialog.open()
-                    }
-                }
-
-                Button {
-                    text: qsTr("Rescue")
-                    icon.name: "system-reboot"
-                    enabled: nutsClient.connected && !nutsClient.busy
-                    onClicked: {
-                        rescueDialog.open()
-                    }
-                }
-
-                Button {
-                    text: qsTr("Self-Update")
-                    icon.name: "view-refresh"
-                    enabled: nutsClient.connected && !nutsClient.busy
-                    onClicked: {
-                        selfUpdateDialog.open()
-                    }
-                }
-            }
-
-            // Cancel button (shown when busy)
+            // Cancel button (shown when busy - kept in body)
             Button {
                 Layout.alignment: Qt.AlignHCenter
                 text: qsTr("Cancel")
@@ -159,84 +169,61 @@ Maui.ApplicationWindow {
     // Update confirmation dialog
     Maui.InfoDialog {
         id: updateDialog
-
         title: qsTr("Confirm Update")
         message: qsTr("This will create a backup of your system and download the latest update. The system will reboot automatically after the update completes.\n\nDo you want to continue?")
-
         standardButtons: Dialog.Yes | Dialog.No
-
-        onAccepted: {
-            nutsClient.performUpdate()
-        }
+        onAccepted: nutsClient.performUpdate()
     }
 
     // Rescue confirmation dialog
     Maui.InfoDialog {
         id: rescueDialog
-
         title: qsTr("Confirm Rescue")
         message: qsTr("This operation will restore your system from a backup. This should only be done from a Live session if your system is not bootable.\n\nDo you want to continue?")
-
         standardButtons: Dialog.Yes | Dialog.No
-
-        onAccepted: {
-            nutsClient.performRescue()
-        }
+        onAccepted: nutsClient.performRescue()
     }
 
     // Self-update confirmation dialog
     Maui.InfoDialog {
         id: selfUpdateDialog
-
         title: qsTr("Confirm Self-Update")
         message: qsTr("This will update the NUTS tool itself to the latest version from GitHub. You will need to reboot to load the changes.\n\nDo you want to continue?")
-
         standardButtons: Dialog.Yes | Dialog.No
-
-        onAccepted: {
-            nutsClient.performSelfUpdate()
-        }
-    }
-
-    // Handle completion/failure
-    Connections {
-        target: nutsClient
-
-        function onOperationCompleted(success, message) {
-            completionDialog.success = success
-            completionDialog.dialogMessage = message
-            completionDialog.open()
-        }
-
-        function onOperationFailed(error) {
-            errorDialog.errorMessage = error
-            errorDialog.open()
-        }
+        onAccepted: nutsClient.performSelfUpdate()
     }
 
     // Completion dialog
     Maui.InfoDialog {
         id: completionDialog
-
         property bool success: true
         property string dialogMessage: ""
-
         title: success ? qsTr("Success") : qsTr("Completed")
         message: completionDialog.dialogMessage
-
         standardButtons: Dialog.Ok
     }
 
     // Error dialog
     Maui.InfoDialog {
         id: errorDialog
-
         property string errorMessage: ""
-
         title: qsTr("Error")
         message: errorMessage
-
         standardButtons: Dialog.Ok
+    }
+
+    // Logic Connections
+    Connections {
+        target: nutsClient
+        function onOperationCompleted(success, message) {
+            completionDialog.success = success
+            completionDialog.dialogMessage = message
+            completionDialog.open()
+        }
+        function onOperationFailed(error) {
+            errorDialog.errorMessage = error
+            errorDialog.open()
+        }
     }
 
     Component.onCompleted: {
