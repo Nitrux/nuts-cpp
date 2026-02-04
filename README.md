@@ -13,7 +13,7 @@ We designed the Nitrux Update Tool System utility to update [Nitrux OS](https://
 
 - It creates a backup of the XFS partition using xfsdump and stores it locally.
 - Then, it downloads an OTA-style archive and updates the system atomically.
-- Rollbacks are handled offline and integrated into the Nitrux ecosystem through the Live session using xfsrestore.
+- Rollbacks are handled offline and integrated into the Nitrux ecosystem.
 
 ### Configuration:
 
