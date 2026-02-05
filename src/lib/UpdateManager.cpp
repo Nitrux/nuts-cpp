@@ -179,7 +179,7 @@ bool UpdateManager::applyUpdate() {
     QString output, error;
 
     // Mount dev in overlay
-    if (!m_sysInterface->executeInOverlay({"mount", "-t", "devtmpfs", "dev", "/dev"}, output, error)) {
+    if (!m_sysInterface->executeInOverlay({"/usr/bin/mount", "-t", "devtmpfs", "dev", "/dev"}, output, error)) {
         Logger::instance().warning("Failed to mount /dev in overlay (might already be mounted)");
     }
 

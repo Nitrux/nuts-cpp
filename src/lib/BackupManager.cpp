@@ -46,7 +46,8 @@ bool BackupManager::executeXfsdump(const QString& device, const QString& outputF
         device
     };
 
-    process.start("xfsdump", args);
+    // SECURITY: Use absolute path to prevent PATH injection
+    process.start("/usr/sbin/xfsdump", args);
 
     if (!process.waitForStarted()) {
         Logger::instance().error("Failed to start xfsdump");
@@ -111,7 +112,8 @@ bool BackupManager::executeZstdCompress(const QString& inputFile, const QString&
         "-o", outputFile
     };
 
-    process.start("zstd", args);
+    // SECURITY: Use absolute path to prevent PATH injection
+    process.start("/usr/bin/zstd", args);
 
     if (!process.waitForStarted()) {
         Logger::instance().error("Failed to start zstd");
@@ -130,7 +132,8 @@ bool BackupManager::restoreBackup(const QString& backupPath, const QString& targ
 
     // First, wipe the target directory
     QProcess wipProcess;
-    wipProcess.start("find", {targetMount, "-mindepth", "1", "-delete"});
+    // SECURITY: Use absolute path to prevent PATH injection
+    wipProcess.start("/usr/bin/find", {targetMount, "-mindepth", "1", "-delete"});
     wipProcess.waitForFinished(-1);
 
     if (!executeXfsrestore(backupPath, targetMount)) {
@@ -153,7 +156,8 @@ bool BackupManager::executeXfsrestore(const QString& backupFile, const QString& 
         targetMount
     };
 
-    process.start("xfsrestore", args);
+    // SECURITY: Use absolute path to prevent PATH injection
+    process.start("/usr/sbin/xfsrestore", args);
 
     if (!process.waitForStarted()) {
         Logger::instance().error("Failed to start xfsrestore");
@@ -201,7 +205,8 @@ bool BackupManager::executeZstdDecompress(const QString& inputFile, const QStrin
         inputFile
     };
 
-    process.start("zstd", args);
+    // SECURITY: Use absolute path to prevent PATH injection
+    process.start("/usr/bin/zstd", args);
 
     if (!process.waitForStarted()) {
         Logger::instance().error("Failed to start zstd");

@@ -152,7 +152,7 @@ Maui.ApplicationWindow {
                    ? qsTr("No Updates Available")
                    : qsTr("Helper Disconnected")
             body: nutsClient.connected
-                  ? qsTr("Your system is up to date.\nClick 'Check for Updates' to manually check again.")
+                  ? qsTr("Your system is up to date.")
                   : qsTr("The update helper service is not running.")
         }
 

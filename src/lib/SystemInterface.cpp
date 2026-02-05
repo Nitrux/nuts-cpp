@@ -14,12 +14,13 @@
 #include <QEventLoop>
 #include <QTimer>
 #include <QFileInfo>
+#include <unistd.h> // Required for chown
 
 namespace Nuts {
 
 SystemInterface::SystemInterface(QObject* parent)
-    : QObject(parent)
-    , m_networkManager(new QNetworkAccessManager(this)) {
+    : QObject(parent) {
+    // m_networkManager removed: We now use local instances for thread safety
 }
 
 bool SystemInterface::executeCommand(const QString& program, const QStringList& arguments,
@@ -71,13 +72,12 @@ SystemInfo SystemInterface::getSystemInfo() {
 QString SystemInterface::getRootPartition() {
     QString output, error;
 
-    // Try /media/root-ro first (when overlay is active)
-    if (executeCommand("findmnt", {"-n", "-o", "SOURCE", "/media/root-ro"}, output, error)) {
+    // Use absolute path for findmnt
+    if (executeCommand("/usr/bin/findmnt", {"-n", "-o", "SOURCE", "/media/root-ro"}, output, error)) {
         return output.trimmed();
     }
 
-    // Fallback to root
-    if (executeCommand("findmnt", {"-n", "-o", "SOURCE", "/"}, output, error)) {
+    if (executeCommand("/usr/bin/findmnt", {"-n", "-o", "SOURCE", "/"}, output, error)) {
         return output.trimmed();
     }
 
@@ -86,7 +86,8 @@ QString SystemInterface::getRootPartition() {
 
 QString SystemInterface::getPartitionLabel(const QString& device) {
     QString output, error;
-    if (executeCommand("blkid", {"-o", "value", "-s", "LABEL", device}, output, error)) {
+    // Use absolute path for blkid
+    if (executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "LABEL", device}, output, error)) {
         return output.trimmed();
     }
     return QString();
@@ -94,7 +95,8 @@ QString SystemInterface::getPartitionLabel(const QString& device) {
 
 QString SystemInterface::getPartitionFilesystem(const QString& device) {
     QString output, error;
-    if (executeCommand("blkid", {"-o", "value", "-s", "TYPE", device}, output, error)) {
+    // Use absolute path for blkid
+    if (executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "TYPE", device}, output, error)) {
         return output.trimmed();
     }
     return QString();
@@ -102,16 +104,20 @@ QString SystemInterface::getPartitionFilesystem(const QString& device) {
 
 bool SystemInterface::isOverlayActive() {
     QString output, error;
-    return executeCommand("mount", {}, output, error) && output.contains("overlayroot");
+    // Use absolute path for mount
+    return executeCommand("/usr/bin/mount", {}, output, error) && output.contains("overlayroot");
 }
 
 bool SystemInterface::checkInternetConnectivity() {
+    // Thread Safety: Create QNAM locally
+    QNetworkAccessManager manager;
+    
     QUrl url(Config::instance().connectivityCheckUrl());
     QNetworkRequest request(url);
     request.setTransferTimeout(10000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
-    QNetworkReply* reply = m_networkManager->head(request);
+    QNetworkReply* reply = manager.head(request);
 
     QEventLoop loop;
     QTimer timeoutTimer;
@@ -138,12 +144,15 @@ bool SystemInterface::checkInternetConnectivity() {
 }
 
 bool SystemInterface::checkGitHubConnectivity() {
+    // Thread Safety: Create QNAM locally
+    QNetworkAccessManager manager;
+
     QUrl url(Config::instance().githubConnectivityCheckUrl());
     QNetworkRequest request(url);
     request.setTransferTimeout(10000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
-    QNetworkReply* reply = m_networkManager->head(request);
+    QNetworkReply* reply = manager.head(request);
 
     QEventLoop loop;
     QTimer timeoutTimer;
@@ -172,7 +181,6 @@ bool SystemInterface::checkGitHubConnectivity() {
 bool SystemInterface::mountPartition(const QString& device, const QString& mountPoint) {
     QString output, error;
 
-    // Create mount point if it doesn't exist
     if (!directoryExists(mountPoint)) {
         if (!createDirectory(mountPoint)) {
             Logger::instance().error("Failed to create mount point: " + mountPoint);
@@ -180,7 +188,8 @@ bool SystemInterface::mountPartition(const QString& device, const QString& mount
         }
     }
 
-    bool result = executeCommand("mount", {"-t", "auto", device, mountPoint}, output, error);
+    // Use absolute path for mount
+    bool result = executeCommand("/usr/bin/mount", {"-t", "auto", device, mountPoint}, output, error);
 
     if (result) {
         Logger::instance().info("Mounted " + device + " to " + mountPoint);
@@ -193,7 +202,8 @@ bool SystemInterface::mountPartition(const QString& device, const QString& mount
 
 bool SystemInterface::unmountPartition(const QString& mountPoint) {
     QString output, error;
-    bool result = executeCommand("umount", {mountPoint}, output, error);
+    // Use absolute path for umount
+    bool result = executeCommand("/usr/bin/umount", {mountPoint}, output, error);
 
     if (result) {
         Logger::instance().info("Unmounted " + mountPoint);
@@ -206,25 +216,28 @@ bool SystemInterface::unmountPartition(const QString& mountPoint) {
 
 bool SystemInterface::isMounted(const QString& mountPoint) {
     QString output, error;
-    return executeCommand("mountpoint", {"-q", mountPoint}, output, error);
+    // Use absolute path for mountpoint
+    return executeCommand("/usr/bin/mountpoint", {"-q", mountPoint}, output, error);
 }
 
 bool SystemInterface::executeInOverlay(const QStringList& command, QString& output, QString& error) {
-    QStringList args = command;
-    args.prepend("overlayroot-chroot");
-
-    return executeCommand("overlayroot-chroot", command, output, error);
+    // Use absolute path for overlayroot-chroot
+    QString program = "/usr/sbin/overlayroot-chroot";
+    return executeCommand(program, command, output, error);
 }
 
 bool SystemInterface::downloadFile(const QString& url, const QString& destination) {
     Logger::instance().info("Downloading: " + url);
 
+    // Thread Safety: Create QNAM locally
+    QNetworkAccessManager manager;
+
     QUrl qurl(url);
     QNetworkRequest request(qurl);
-    request.setTransferTimeout(600000); // 10 minute timeout
+    request.setTransferTimeout(600000); 
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
-    QNetworkReply* reply = m_networkManager->get(request);
+    QNetworkReply* reply = manager.get(request);
 
     QEventLoop loop;
     QTimer timeoutTimer;
@@ -306,8 +319,6 @@ QString SystemInterface::calculateSHA256(const QString& filePath) {
 }
 
 bool SystemInterface::verifyChecksum(const QString& filePath, const QString& expectedChecksum) {
-    // Auto-detect checksum type based on length
-    // MD5 = 32 chars, SHA256 = 64 chars
     QString actualChecksum;
 
     if (expectedChecksum.length() == 64) {
@@ -337,8 +348,6 @@ bool SystemInterface::verifyChecksum(const QString& filePath, const QString& exp
 }
 
 bool SystemInterface::verifyGPGSignature(const QString& dataFile, const QString& signatureFile) {
-    // Path to the public keyring.
-    // Ensure this file is installed by your packaging system (e.g. via CMake install)
     const QString publicKeyRing = "/usr/share/nuts/keys/nitrux-updates.gpg";
 
     if (!QFile::exists(publicKeyRing)) {
@@ -347,8 +356,7 @@ bool SystemInterface::verifyGPGSignature(const QString& dataFile, const QString&
         return false;
     }
 
-    // Use gpgv (from gnupg2) using absolute path for security (avoids PATH injection)
-    // gpgv is strictly for verification and is safer than full gpg
+    // Use absolute path for gpgv to prevent PATH injection
     QString program = "/usr/bin/gpgv";
     
     QStringList args;
@@ -363,19 +371,22 @@ bool SystemInterface::verifyGPGSignature(const QString& dataFile, const QString&
         Logger::instance().success("GPG signature verified successfully for " + QFileInfo(dataFile).fileName());
     } else {
         Logger::instance().error("SECURITY ALERT: GPG signature verification FAILED");
-        Logger::instance().error("GPGv Output: " + error); // gpgv writes status to stderr
+        Logger::instance().error("GPGv Output: " + error);
     }
 
     return result;
 }
 
 qint64 SystemInterface::getRemoteFileSize(const QString& url) {
+    // Thread Safety: Create QNAM locally
+    QNetworkAccessManager manager;
+
     QUrl qurl(url);
     QNetworkRequest request(qurl);
     request.setTransferTimeout(10000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
-    QNetworkReply* reply = m_networkManager->head(request);
+    QNetworkReply* reply = manager.head(request);
 
     QEventLoop loop;
     QTimer timeoutTimer;
@@ -414,11 +425,33 @@ bool SystemInterface::createDirectory(const QString& path) {
 }
 
 bool SystemInterface::createSecureDirectory(const QString& path) {
-    // Create directory with restricted permissions (0700 - rwx------)
     QDir dir;
+    // mkpath returns true if directory exists or was created
     if (!dir.mkpath(path)) {
         Logger::instance().error("Failed to create secure directory: " + path);
         return false;
+    }
+    
+    // Immediately enforce permissions and ownership
+    return enforceSecurePermissions(path);
+}
+
+bool SystemInterface::enforceSecurePermissions(const QString& path) {
+    QFileInfo info(path);
+    if (!info.exists()) {
+        Logger::instance().error("Cannot enforce permissions on non-existent path: " + path);
+        return false;
+    }
+
+    // CRITICAL: Ensure ownership is root (0)
+    if (info.ownerId() != 0) {
+        Logger::instance().warning("Directory not owned by root! Attempting to seize ownership: " + path);
+        
+        // chown(path, owner, group) - 0 is root
+        if (::chown(QFile::encodeName(path).constData(), 0, 0) != 0) {
+             Logger::instance().error("SECURITY FAILURE: Failed to claim ownership of directory. Aborting.");
+             return false;
+        }
     }
 
     // Set permissions to 0700 (owner read/write/execute only)
@@ -428,24 +461,7 @@ bool SystemInterface::createSecureDirectory(const QString& path) {
         return false;
     }
 
-    Logger::instance().info("Created secure directory (0700): " + path);
-    return true;
-}
-
-bool SystemInterface::enforceSecurePermissions(const QString& path) {
-    // Enforce 0700 permissions on existing directory (defense against tampering)
-    if (!QDir(path).exists()) {
-        Logger::instance().error("Cannot enforce permissions on non-existent path: " + path);
-        return false;
-    }
-
-    QFile::Permissions perms = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
-    if (!QFile::setPermissions(path, perms)) {
-        Logger::instance().error("Failed to enforce secure permissions on: " + path);
-        return false;
-    }
-
-    Logger::instance().info("Enforced secure permissions (0700) on: " + path);
+    Logger::instance().info("Enforced secure permissions (0700, root:root) on: " + path);
     return true;
 }
 

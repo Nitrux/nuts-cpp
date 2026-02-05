@@ -49,13 +49,14 @@ void NutsHelper::initialize() {
     // Create or secure work directory
     QString workDir = Config::instance().workDir();
     if (!m_sysInterface->directoryExists(workDir)) {
+        // Securely create directory (0700 + root ownership)
         if (!m_sysInterface->createSecureDirectory(workDir)) {
             Logger::instance().error("Failed to create secure work directory");
             QCoreApplication::exit(1);
             return;
         }
     } else {
-        // Directory exists - enforce permissions to prevent tampering
+        // Directory exists - enforce permissions/ownership to prevent tampering
         if (!m_sysInterface->enforceSecurePermissions(workDir)) {
             Logger::instance().error("Failed to enforce secure permissions on work directory");
             QCoreApplication::exit(1);
@@ -155,7 +156,6 @@ bool NutsHelper::PerformUpdate() {
     m_cancelled = false;
 
     // Run asynchronously using QtConcurrent to not block D-Bus
-    // We don't need the QFuture return value for fire-and-forget operations
     (void)QtConcurrent::run([this]() {
         handleUpdateOperation();
     });
@@ -165,89 +165,89 @@ bool NutsHelper::PerformUpdate() {
 
 void NutsHelper::handleUpdateOperation() {
     // Check connectivity
-        emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking connectivity");
+    emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking connectivity");
 
-        if (!m_sysInterface->checkInternetConnectivity()) {
-            Q_EMIT OperationFailed("No internet connectivity");
+    if (!m_sysInterface->checkInternetConnectivity()) {
+        Q_EMIT OperationFailed("No internet connectivity");
+        return;
+    }
+
+    if (!m_sysInterface->checkGitHubConnectivity()) {
+        Q_EMIT OperationFailed("Cannot reach GitHub");
+        return;
+    }
+
+    // Get system info
+    SystemInfo sysInfo = m_sysInterface->getSystemInfo();
+
+    // Download query file
+    emitProgress(OperationStatus::DownloadingUpdate, 10, "Checking for updates");
+
+    if (!m_updateManager->downloadQueryFile(Config::instance().branch())) {
+        Q_EMIT OperationFailed("Failed to download update information");
+        return;
+    }
+
+    // Check if update is available
+    if (!m_updateManager->isUpdateAvailable(sysInfo.version)) {
+        Q_EMIT OperationCompleted(true, "No update available");
+        return;
+    }
+
+    // Create backup
+    emitProgress(OperationStatus::CreatingBackup, 15, "Creating system backup");
+
+    QString xfsBackupFile = Config::instance().xfsDir() + "/xfs-backup.xfs";
+    QString compressedBackup = xfsBackupFile + ".zst";
+
+    if (QFile::exists(compressedBackup)) {
+        Logger::instance().info("Backup already exists, skipping");
+    } else {
+        if (!m_backupManager->createBackup(sysInfo.rootPartition, xfsBackupFile)) {
+            Q_EMIT OperationFailed("Failed to create backup");
             return;
         }
 
-        if (!m_sysInterface->checkGitHubConnectivity()) {
-            Q_EMIT OperationFailed("Cannot reach GitHub");
+        emitProgress(OperationStatus::CompressingBackup, 40, "Compressing backup");
+
+        if (!m_backupManager->compressBackup(xfsBackupFile, compressedBackup)) {
+            Q_EMIT OperationFailed("Failed to compress backup");
             return;
         }
+    }
 
-        // Get system info
-        SystemInfo sysInfo = m_sysInterface->getSystemInfo();
+    // Apply update
+    emitProgress(OperationStatus::ApplyingUpdate, 60, "Applying update");
 
-        // Download query file
-        emitProgress(OperationStatus::DownloadingUpdate, 10, "Checking for updates");
+    if (!m_updateManager->applyUpdate()) {
+        Q_EMIT OperationFailed("Failed to apply update");
+        return;
+    }
 
-        if (!m_updateManager->downloadQueryFile(Config::instance().branch())) {
-            Q_EMIT OperationFailed("Failed to download update information");
-            return;
-        }
+    // Success
+    Q_EMIT OperationCompleted(true, "Update completed successfully. System will reboot in 30 seconds.");
 
-        // Check if update is available
-        if (!m_updateManager->isUpdateAvailable(sysInfo.version)) {
-            Q_EMIT OperationCompleted(true, "No update available");
-            return;
-        }
+    // Schedule reboot
+    QThread::sleep(30);
 
-        // Create backup
-        emitProgress(OperationStatus::CreatingBackup, 15, "Creating system backup");
+    // Perform standard reboot sequence
+    Logger::instance().info("Initiating system reboot");
 
-        QString xfsBackupFile = Config::instance().xfsDir() + "/xfs-backup.xfs";
-        QString compressedBackup = xfsBackupFile + ".zst";
+    // Sync filesystem buffers (twice for safety)
+    sync();
+    QThread::msleep(500);
+    sync();
+    QThread::msleep(500);
 
-        if (QFile::exists(compressedBackup)) {
-            Logger::instance().info("Backup already exists, skipping");
-        } else {
-            if (!m_backupManager->createBackup(sysInfo.rootPartition, xfsBackupFile)) {
-                Q_EMIT OperationFailed("Failed to create backup");
-                return;
-            }
+    // Use standard reboot command with absolute path to prevent PATH injection
+    QString output, error;
+    if (!m_sysInterface->executeCommand("/usr/sbin/reboot", {}, output, error, 5000)) {
+        Logger::instance().warning("Reboot command failed, trying direct syscall");
 
-            emitProgress(OperationStatus::CompressingBackup, 40, "Compressing backup");
-
-            if (!m_backupManager->compressBackup(xfsBackupFile, compressedBackup)) {
-                Q_EMIT OperationFailed("Failed to compress backup");
-                return;
-            }
-        }
-
-        // Apply update
-        emitProgress(OperationStatus::ApplyingUpdate, 60, "Applying update");
-
-        if (!m_updateManager->applyUpdate()) {
-            Q_EMIT OperationFailed("Failed to apply update");
-            return;
-        }
-
-        // Success
-        Q_EMIT OperationCompleted(true, "Update completed successfully. System will reboot in 30 seconds.");
-
-        // Schedule reboot
-        QThread::sleep(30);
-
-        // Perform standard reboot sequence
-        Logger::instance().info("Initiating system reboot");
-
-        // Sync filesystem buffers (twice for safety)
+        // Fallback to direct kernel syscall (no shell, no PATH lookup)
         sync();
-        QThread::msleep(500);
-        sync();
-        QThread::msleep(500);
-
-        // Use standard reboot command with absolute path
-        QString output, error;
-        if (!m_sysInterface->executeCommand("/usr/sbin/reboot", {}, output, error, 5000)) {
-            Logger::instance().warning("Reboot command failed, trying direct syscall");
-
-            // Fallback to direct kernel syscall (no shell, no PATH lookup)
-            sync();
-            ::reboot(RB_AUTOBOOT);
-        }
+        ::reboot(RB_AUTOBOOT);
+    }
 }
 
 bool NutsHelper::PerformRescue() {
@@ -264,7 +264,6 @@ bool NutsHelper::PerformRescue() {
     m_cancelled = false;
 
     // Run asynchronously using QtConcurrent to not block D-Bus
-    // We don't need the QFuture return value for fire-and-forget operations
     (void)QtConcurrent::run([this]() {
         handleRescueOperation();
     });
@@ -275,83 +274,83 @@ bool NutsHelper::PerformRescue() {
 void NutsHelper::handleRescueOperation() {
     emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking environment");
 
-        // Check if running from Live session
-        if (!QFile::exists("/usr/bin/calamares")) {
-            Q_EMIT OperationFailed("Rescue operation can only be run from a Live session");
-            return;
-        }
+    // Check if running from Live session
+    if (!QFile::exists("/usr/bin/calamares")) {
+        Q_EMIT OperationFailed("Rescue operation can only be run from a Live session");
+        return;
+    }
 
-        // Find partitions with absolute path
-        QString output, error;
-        if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_ROOT"}, output, error)) {
-            Q_EMIT OperationFailed("Cannot find NX_ROOT partition");
-            return;
-        }
-        QString rootPartition = output.trimmed();
+    // Find partitions with absolute path to prevent PATH injection
+    QString output, error;
+    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_ROOT"}, output, error)) {
+        Q_EMIT OperationFailed("Cannot find NX_ROOT partition");
+        return;
+    }
+    QString rootPartition = output.trimmed();
 
-        if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_HOME"}, output, error)) {
-            Q_EMIT OperationFailed("Cannot find NX_HOME partition");
-            return;
-        }
-        QString homePartition = output.trimmed();
+    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_HOME"}, output, error)) {
+        Q_EMIT OperationFailed("Cannot find NX_HOME partition");
+        return;
+    }
+    QString homePartition = output.trimmed();
 
-        // Mount partitions
-        emitProgress(OperationStatus::RestoringBackup, 10, "Mounting partitions");
+    // Mount partitions
+    emitProgress(OperationStatus::RestoringBackup, 10, "Mounting partitions");
 
-        QString rootMount = "/media/nitrux/NX_ROOT";
-        QString homeMount = "/media/nitrux/NX_HOME";
+    QString rootMount = "/media/nitrux/NX_ROOT";
+    QString homeMount = "/media/nitrux/NX_HOME";
 
-        if (!m_sysInterface->mountPartition(rootPartition, rootMount)) {
-            Q_EMIT OperationFailed("Failed to mount root partition");
-            return;
-        }
+    if (!m_sysInterface->mountPartition(rootPartition, rootMount)) {
+        Q_EMIT OperationFailed("Failed to mount root partition");
+        return;
+    }
 
-        if (!m_sysInterface->mountPartition(homePartition, homeMount)) {
-            Q_EMIT OperationFailed("Failed to mount home partition");
-            return;
-        }
+    if (!m_sysInterface->mountPartition(homePartition, homeMount)) {
+        Q_EMIT OperationFailed("Failed to mount home partition");
+        return;
+    }
 
-        // Locate backup
-        QString compressedBackup = homeMount + "/.nuts/xfs/xfs-backup.xfs.zst";
-        QString checksumFile = homeMount + "/.nuts/xfs/xfs-backup.md5sum";
+    // Locate backup
+    QString compressedBackup = homeMount + "/.nuts/xfs/xfs-backup.xfs.zst";
+    QString checksumFile = homeMount + "/.nuts/xfs/xfs-backup.md5sum";
 
-        if (!QFile::exists(compressedBackup)) {
-            Q_EMIT OperationFailed("Backup file not found");
-            return;
-        }
+    if (!QFile::exists(compressedBackup)) {
+        Q_EMIT OperationFailed("Backup file not found");
+        return;
+    }
 
-        // Verify backup
-        emitProgress(OperationStatus::VerifyingUpdate, 20, "Verifying backup");
+    // Verify backup
+    emitProgress(OperationStatus::VerifyingUpdate, 20, "Verifying backup");
 
-        if (!m_backupManager->verifyBackup(compressedBackup, checksumFile)) {
-            Q_EMIT OperationFailed("Backup verification failed");
-            return;
-        }
+    if (!m_backupManager->verifyBackup(compressedBackup, checksumFile)) {
+        Q_EMIT OperationFailed("Backup verification failed");
+        return;
+    }
 
-        // Decompress backup
-        emitProgress(OperationStatus::DecompressingBackup, 30, "Decompressing backup");
+    // Decompress backup
+    emitProgress(OperationStatus::DecompressingBackup, 30, "Decompressing backup");
 
-        QString decompressedBackup = homeMount + "/.nuts/xfs/xfs-backup.xfs";
-        if (!m_backupManager->decompressBackup(compressedBackup, decompressedBackup)) {
-            Q_EMIT OperationFailed("Failed to decompress backup");
-            return;
-        }
+    QString decompressedBackup = homeMount + "/.nuts/xfs/xfs-backup.xfs";
+    if (!m_backupManager->decompressBackup(compressedBackup, decompressedBackup)) {
+        Q_EMIT OperationFailed("Failed to decompress backup");
+        return;
+    }
 
-        // Restore backup
-        emitProgress(OperationStatus::RestoringBackup, 50, "Restoring system");
+    // Restore backup
+    emitProgress(OperationStatus::RestoringBackup, 50, "Restoring system");
 
-        if (!m_backupManager->restoreBackup(decompressedBackup, rootMount)) {
-            Q_EMIT OperationFailed("Failed to restore backup");
-            return;
-        }
+    if (!m_backupManager->restoreBackup(decompressedBackup, rootMount)) {
+        Q_EMIT OperationFailed("Failed to restore backup");
+        return;
+    }
 
-        // Cleanup
-        QFile::remove(decompressedBackup);
+    // Cleanup
+    QFile::remove(decompressedBackup);
 
-        m_sysInterface->unmountPartition(rootMount);
-        m_sysInterface->unmountPartition(homeMount);
+    m_sysInterface->unmountPartition(rootMount);
+    m_sysInterface->unmountPartition(homeMount);
 
-        Q_EMIT OperationCompleted(true, "System restored successfully");
+    Q_EMIT OperationCompleted(true, "System restored successfully");
 }
 
 QVariantMap NutsHelper::GetSystemInfo() {
