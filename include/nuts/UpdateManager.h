@@ -53,6 +53,7 @@ private:
     bool checkDiskSpace();
     bool prepareSystemPartitions();
     bool downloadOTAPayload();
+    bool verifySquashFSIntegrity(const QString& squashfsPath);
     bool mountOTAPayload();
     bool prepareUpdateTools();
     bool syncPackageData();

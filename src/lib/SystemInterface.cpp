@@ -443,6 +443,42 @@ qint64 SystemInterface::getRemoteFileSize(const QString& url) {
     return fileSize;
 }
 
+int SystemInterface::testMirrorLatency(const QString& url, int timeout) {
+    QNetworkAccessManager manager;
+    QUrl qurl(url);
+    QNetworkRequest request(qurl);
+    request.setTransferTimeout(timeout);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+
+    // Use HEAD request for minimal data transfer
+    QElapsedTimer timer;
+    timer.start();
+
+    QNetworkReply* reply = manager.head(request);
+
+    QEventLoop loop;
+    QTimer timeoutTimer;
+    timeoutTimer.setSingleShot(true);
+    timeoutTimer.setInterval(timeout);
+
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
+
+    timeoutTimer.start();
+    loop.exec();
+
+    int latency = -1; // -1 indicates failure/timeout
+
+    if (reply->error() == QNetworkReply::NoError && timeoutTimer.isActive()) {
+        latency = timer.elapsed();
+    }
+
+    timeoutTimer.stop();
+    reply->deleteLater();
+
+    return latency;
+}
+
 bool SystemInterface::createDirectory(const QString& path) {
     QDir dir;
     bool result = dir.mkpath(path);

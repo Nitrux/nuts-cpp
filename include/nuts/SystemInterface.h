@@ -43,11 +43,12 @@ public:
     QString calculateMD5(const QString& filePath);
     QString calculateSHA256(const QString& filePath);
     bool verifyChecksum(const QString& filePath, const QString& expectedChecksum);
-    
+
     // NEW: Security Verification
     bool verifyGPGSignature(const QString& dataFile, const QString& signatureFile);
 
     qint64 getRemoteFileSize(const QString& url);
+    int testMirrorLatency(const QString& url, int timeout = 5000);
 
     // Directory operations
     bool createDirectory(const QString& path);

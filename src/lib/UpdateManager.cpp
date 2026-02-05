@@ -9,6 +9,8 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QThread>
+#include <QUrl>
+#include <algorithm>
 
 namespace Nuts {
 
@@ -232,7 +234,7 @@ bool UpdateManager::prepareSystemPartitions() {
 
 bool UpdateManager::downloadOTAPayload() {
     QString otaPath = Config::instance().downloadDir() + "/nuts-ota.squashfs";
-    
+
     if (QFile::exists(otaPath)) {
         if (m_sysInterface->verifyChecksum(otaPath, m_otaChecksum)) {
             Logger::instance().success("Existing OTA payload verified.");
@@ -242,16 +244,57 @@ bool UpdateManager::downloadOTAPayload() {
         QFile::remove(otaPath);
     }
 
+    // Sort mirrors by latency for optimal download speed
+    QList<QPair<QString, int>> mirrorLatencies;
+
+    Logger::instance().info("Testing mirror latencies...");
     for (const QString& mirror : m_mirrorList) {
         QString url = mirror.trimmed();
         if (url.isEmpty()) continue;
 
+        int latency = m_sysInterface->testMirrorLatency(url, 5000);
+        if (latency >= 0) {
+            mirrorLatencies.append(qMakePair(url, latency));
+            Logger::instance().info(QString("Mirror %1: %2ms").arg(QUrl(url).host()).arg(latency));
+        } else {
+            Logger::instance().warning(QString("Mirror %1: unreachable").arg(QUrl(url).host()));
+        }
+    }
+
+    // Sort by latency (lowest first)
+    std::sort(mirrorLatencies.begin(), mirrorLatencies.end(),
+              [](const QPair<QString, int>& a, const QPair<QString, int>& b) {
+                  return a.second < b.second;
+              });
+
+    if (mirrorLatencies.isEmpty()) {
+        Logger::instance().error("No reachable mirrors found.");
+        return false;
+    }
+
+    Logger::instance().info(QString("Using fastest mirror: %1 (%2ms)")
+                           .arg(QUrl(mirrorLatencies.first().first).host())
+                           .arg(mirrorLatencies.first().second));
+
+    // Try mirrors in order of latency
+    for (const auto& mirrorPair : mirrorLatencies) {
+        QString url = mirrorPair.first;
+
         if (m_sysInterface->downloadFile(url, otaPath)) {
             if (m_sysInterface->verifyChecksum(otaPath, m_otaChecksum)) {
-                return true;
+                // ADDITIONAL SAFETY: Verify SquashFS integrity with test mount
+                Logger::instance().info("Verifying SquashFS filesystem integrity...");
+                if (verifySquashFSIntegrity(otaPath)) {
+                    Logger::instance().success("SquashFS integrity verified.");
+                    return true;
+                } else {
+                    Logger::instance().error("SquashFS integrity check failed for " + url);
+                    QFile::remove(otaPath);
+                }
+            } else {
+                Logger::instance().error("Checksum mismatch for " + url);
+                QFile::remove(otaPath);
             }
-            Logger::instance().error("Checksum mismatch for " + url);
-            QFile::remove(otaPath);
         }
     }
 
@@ -520,6 +563,46 @@ bool UpdateManager::downloadUpdateArchive(const QString& url, const QString& des
 
 bool UpdateManager::verifyUpdateArchive(const QString& filePath, const QString& expectedChecksum) {
     return m_sysInterface->verifyChecksum(filePath, expectedChecksum);
+}
+
+bool UpdateManager::verifySquashFSIntegrity(const QString& squashfsPath) {
+    // Create a temporary mount point for verification
+    QString tempMount = Config::instance().workDir() + "/squashfs-verify";
+
+    // Create mount point
+    if (!m_sysInterface->directoryExists(tempMount)) {
+        if (!m_sysInterface->createDirectory(tempMount)) {
+            Logger::instance().warning("Could not create temporary mount point for verification");
+            return true; // Don't fail the update if we can't verify
+        }
+    }
+
+    QString output, error;
+
+    // Attempt to mount (read-only)
+    bool mountSuccess = m_sysInterface->executeCommand("/usr/bin/mount",
+                                                       {"-o", "ro,loop", squashfsPath, tempMount},
+                                                       output, error, 10000);
+
+    if (!mountSuccess) {
+        Logger::instance().error("Test mount failed: " + error);
+        return false;
+    }
+
+    // Check if we can read the directory structure
+    bool readSuccess = m_sysInterface->executeCommand("/usr/bin/ls",
+                                                      {tempMount + "/ota"},
+                                                      output, error, 5000);
+
+    // Unmount
+    m_sysInterface->unmountPartition(tempMount);
+
+    if (!readSuccess) {
+        Logger::instance().error("Could not read SquashFS contents");
+        return false;
+    }
+
+    return true;
 }
 
 bool UpdateManager::checkDiskSpace() {
