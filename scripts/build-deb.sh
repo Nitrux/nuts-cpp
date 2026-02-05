@@ -56,16 +56,16 @@ make install
 checkinstall -D -y \
 	--install=no \
 	--fstrans=yes \
-	--pkgname=nuts \
+	--pkgname=nuts-cpp \
 	--pkgversion="$PACKAGE_VERSION" \
 	--pkgarch="$(dpkg --print-architecture)" \
 	--pkgrelease="1" \
 	--pkglicense=BSD-3 \
 	--pkggroup=admin \
-	--pkgsource=nuts \
+	--pkgsource=nuts-cpp \
 	--pakdir=. \
 	--maintainer=uri_herrera@nxos.org \
-	--provides=nuts \
+	--provides=nuts-cpp \
 	--requires="libc6,libqt6core6,libqt6dbus6,libqt6quick6,libqt6qml6,libkf6coreaddons6,libkf6i18n6,libkf6notifications6,mauikit \(\>= 4.0.2\),polkitd,xfsdump,zstd,axel,wget,nx-overlayroot" \
 	--nodoc \
 	--strip=no \
