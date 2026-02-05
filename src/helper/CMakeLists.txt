@@ -16,6 +16,7 @@ target_link_libraries(nuts-helper
         nuts
         Qt6::Core
         Qt6::DBus
+        Qt6::Concurrent
         KF6::CoreAddons
         PolkitQt6-1::Core
 )

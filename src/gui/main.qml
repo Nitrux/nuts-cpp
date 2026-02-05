@@ -9,7 +9,7 @@ Maui.ApplicationWindow {
     title: qsTr("Nitrux Update Tool System")
 
     // Debug flags for testing UI states
-    readonly property bool debugMode: true  // Set to true to test update UI
+    readonly property bool debugMode: false  // Set to true to test update UI
     readonly property bool debugUpdateAvailable: debugMode ? true : nutsClient.updateAvailable
     readonly property string debugUpdateVersion: debugMode ? "6.0.0" : nutsClient.updateVersion
     readonly property string debugUpdateSize: debugMode ? "1.5 GB" : nutsClient.updateSize

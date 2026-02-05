@@ -8,6 +8,8 @@
 #include <QString>
 #include <QObject>
 #include <QProcess>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 
 namespace Nuts {
 
@@ -39,10 +41,18 @@ public:
     // File operations
     bool downloadFile(const QString& url, const QString& destination);
     QString calculateMD5(const QString& filePath);
+    QString calculateSHA256(const QString& filePath);
     bool verifyChecksum(const QString& filePath, const QString& expectedChecksum);
+    
+    // NEW: Security Verification
+    bool verifyGPGSignature(const QString& dataFile, const QString& signatureFile);
+
+    qint64 getRemoteFileSize(const QString& url);
 
     // Directory operations
     bool createDirectory(const QString& path);
+    bool createSecureDirectory(const QString& path);
+    bool enforceSecurePermissions(const QString& path);
     bool directoryExists(const QString& path);
     qint64 getDirectorySize(const QString& path);
     qint64 getAvailableSpace(const QString& path);
@@ -58,6 +68,8 @@ Q_SIGNALS:
 private:
     bool executeCommandAsync(const QString& program, const QStringList& arguments,
                             std::function<void(QProcess*)> callback);
+
+    QNetworkAccessManager* m_networkManager{nullptr};
 };
 
 } // namespace Nuts

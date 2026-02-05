@@ -10,6 +10,7 @@
 #include <QObject>
 #include <QDBusContext>
 #include <QDBusVariant>
+#include <QTimer>
 
 namespace Nuts {
 
@@ -26,6 +27,7 @@ public Q_SLOTS:
     bool PerformUpdate();
     bool PerformRescue();
     QVariantMap GetSystemInfo();
+    QVariantMap CheckForUpdates();
     bool CheckConnectivity();
     void Cancel();
 
@@ -47,6 +49,8 @@ private:
                      const QString& message, const QString& details = QString());
 
     void connectSignals();
+    bool checkAuthorization(const QString& actionId);
+    void resetIdleTimer();
 
     SystemInterface* m_sysInterface{nullptr};
     BackupManager* m_backupManager{nullptr};
@@ -54,6 +58,7 @@ private:
 
     bool m_cancelled{false};
     OperationType m_currentOperation;
+    QTimer* m_idleTimer{nullptr};
 };
 
 } // namespace Nuts

@@ -7,9 +7,14 @@
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusError>
+#include <QDBusMessage>
 #include <QFile>
 #include <QThread>
+#include <QtConcurrent>
+#include <PolkitQt1/Authority>
+#include <PolkitQt1/Subject>
 #include <unistd.h>
+#include <sys/reboot.h>
 
 namespace Nuts {
 
@@ -41,6 +46,23 @@ void NutsHelper::initialize() {
     // Create system interface
     m_sysInterface = new SystemInterface(this);
 
+    // Create or secure work directory
+    QString workDir = Config::instance().workDir();
+    if (!m_sysInterface->directoryExists(workDir)) {
+        if (!m_sysInterface->createSecureDirectory(workDir)) {
+            Logger::instance().error("Failed to create secure work directory");
+            QCoreApplication::exit(1);
+            return;
+        }
+    } else {
+        // Directory exists - enforce permissions to prevent tampering
+        if (!m_sysInterface->enforceSecurePermissions(workDir)) {
+            Logger::instance().error("Failed to enforce secure permissions on work directory");
+            QCoreApplication::exit(1);
+            return;
+        }
+    }
+
     // Create managers
     m_backupManager = new BackupManager(m_sysInterface, this);
     m_updateManager = new UpdateManager(m_sysInterface, this);
@@ -48,7 +70,17 @@ void NutsHelper::initialize() {
     // Connect signals
     connectSignals();
 
-    Logger::instance().info("NUTS helper initialized");
+    // Set up idle timer to exit after 60 seconds of inactivity
+    m_idleTimer = new QTimer(this);
+    m_idleTimer->setInterval(60000);  // 60 seconds
+    m_idleTimer->setSingleShot(true);
+    connect(m_idleTimer, &QTimer::timeout, this, []() {
+        Logger::instance().info("Idle timeout reached, shutting down helper");
+        QCoreApplication::quit();
+    });
+    m_idleTimer->start();
+
+    Logger::instance().info("NUTS helper initialized (will exit after 60s of inactivity)");
 }
 
 void NutsHelper::cleanup() {
@@ -110,18 +142,23 @@ void NutsHelper::emitProgress(OperationStatus status, int percentage,
 }
 
 bool NutsHelper::PerformUpdate() {
+    resetIdleTimer();  // Reset idle timer on activity
+
+    // Check authorization before proceeding
+    if (!checkAuthorization("org.nxos.nuts.update")) {
+        return false;  // Error already sent by checkAuthorization
+    }
+
     Logger::instance().info("Starting update operation");
 
     m_currentOperation = OperationType::Update;
     m_cancelled = false;
 
-    // Run in separate thread to not block D-Bus
-    QThread* thread = QThread::create([this]() {
+    // Run asynchronously using QtConcurrent to not block D-Bus
+    // We don't need the QFuture return value for fire-and-forget operations
+    (void)QtConcurrent::run([this]() {
         handleUpdateOperation();
     });
-
-    connect(thread, &QThread::finished, thread, &QThread::deleteLater);
-    thread->start();
 
     return true;
 }
@@ -193,36 +230,44 @@ void NutsHelper::handleUpdateOperation() {
         // Schedule reboot
         QThread::sleep(30);
 
-        // Emergency sync
-        QFile::setPermissions("/proc/sysrq-trigger", QFileDevice::WriteUser | QFileDevice::WriteOwner);
-        QFile sysrq("/proc/sys/kernel/sysrq");
-        if (sysrq.open(QIODevice::WriteOnly)) {
-            sysrq.write("1");
-            sysrq.close();
-        }
+        // Perform standard reboot sequence
+        Logger::instance().info("Initiating system reboot");
 
-        QFile trigger("/proc/sysrq-trigger");
-        if (trigger.open(QIODevice::WriteOnly)) {
-            trigger.write("s");  // Emergency sync
-            trigger.close();
-        }
-
+        // Sync filesystem buffers (twice for safety)
         sync();
-        system("reboot");
+        QThread::msleep(500);
+        sync();
+        QThread::msleep(500);
+
+        // Use standard reboot command with absolute path
+        QString output, error;
+        if (!m_sysInterface->executeCommand("/usr/sbin/reboot", {}, output, error, 5000)) {
+            Logger::instance().warning("Reboot command failed, trying direct syscall");
+
+            // Fallback to direct kernel syscall (no shell, no PATH lookup)
+            sync();
+            ::reboot(RB_AUTOBOOT);
+        }
 }
 
 bool NutsHelper::PerformRescue() {
+    resetIdleTimer();  // Reset idle timer on activity
+
+    // Check authorization before proceeding
+    if (!checkAuthorization("org.nxos.nuts.rescue")) {
+        return false;  // Error already sent by checkAuthorization
+    }
+
     Logger::instance().info("Starting rescue operation");
 
     m_currentOperation = OperationType::Rescue;
     m_cancelled = false;
 
-    QThread* thread = QThread::create([this]() {
+    // Run asynchronously using QtConcurrent to not block D-Bus
+    // We don't need the QFuture return value for fire-and-forget operations
+    (void)QtConcurrent::run([this]() {
         handleRescueOperation();
     });
-
-    connect(thread, &QThread::finished, thread, &QThread::deleteLater);
-    thread->start();
 
     return true;
 }
@@ -236,15 +281,15 @@ void NutsHelper::handleRescueOperation() {
             return;
         }
 
-        // Find partitions
+        // Find partitions with absolute path
         QString output, error;
-        if (!m_sysInterface->executeCommand("findfs", {"LABEL=NX_ROOT"}, output, error)) {
+        if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_ROOT"}, output, error)) {
             Q_EMIT OperationFailed("Cannot find NX_ROOT partition");
             return;
         }
         QString rootPartition = output.trimmed();
 
-        if (!m_sysInterface->executeCommand("findfs", {"LABEL=NX_HOME"}, output, error)) {
+        if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_HOME"}, output, error)) {
             Q_EMIT OperationFailed("Cannot find NX_HOME partition");
             return;
         }
@@ -310,6 +355,8 @@ void NutsHelper::handleRescueOperation() {
 }
 
 QVariantMap NutsHelper::GetSystemInfo() {
+    resetIdleTimer();  // Reset idle timer on activity
+
     SystemInfo info = m_sysInterface->getSystemInfo();
 
     QVariantMap map;
@@ -325,7 +372,70 @@ QVariantMap NutsHelper::GetSystemInfo() {
     return map;
 }
 
+QVariantMap NutsHelper::CheckForUpdates() {
+    resetIdleTimer();  // Reset idle timer on activity
+
+    QVariantMap result;
+
+    Logger::instance().info("Checking for updates");
+
+    // Check connectivity first
+    if (!m_sysInterface->checkInternetConnectivity()) {
+        result["available"] = false;
+        result["error"] = "No internet connectivity";
+        return result;
+    }
+
+    if (!m_sysInterface->checkGitHubConnectivity()) {
+        result["available"] = false;
+        result["error"] = "Cannot reach GitHub";
+        return result;
+    }
+
+    // Get current system info
+    SystemInfo sysInfo = m_sysInterface->getSystemInfo();
+    result["currentVersion"] = sysInfo.version;
+
+    // Download and parse query file
+    if (!m_updateManager->downloadQueryFile(Config::instance().branch())) {
+        result["available"] = false;
+        result["error"] = "Failed to download update information";
+        return result;
+    }
+
+    // Check if update is available
+    bool available = m_updateManager->isUpdateAvailable(sysInfo.version);
+    result["available"] = available;
+
+    if (available) {
+        QString targetVersion = m_updateManager->getMinTarget();
+        QString updateUrl = m_updateManager->getUpdateUrl();
+
+        result["targetVersion"] = targetVersion;
+        result["updateUrl"] = updateUrl;
+        result["updateChecksum"] = m_updateManager->getUpdateChecksum();
+
+        // Fetch file size (cached for this check)
+        qint64 fileSize = m_sysInterface->getRemoteFileSize(updateUrl);
+        result["updateSize"] = fileSize;
+
+        // Build release notes URL
+        QString releaseNotesUrl = Config::instance().releaseNotesUrl();
+        releaseNotesUrl.replace("{version}", targetVersion);
+        result["releaseNotesUrl"] = releaseNotesUrl;
+
+        Logger::instance().info("Update available: " + targetVersion);
+        Logger::instance().info("Update size: " + QString::number(fileSize / (1024.0 * 1024.0), 'f', 2) + " MB");
+    } else {
+        Logger::instance().info("No update available");
+    }
+
+    return result;
+}
+
 bool NutsHelper::CheckConnectivity() {
+    resetIdleTimer();  // Reset idle timer on activity
+
     bool internet = m_sysInterface->checkInternetConnectivity();
     bool github = m_sysInterface->checkGitHubConnectivity();
 
@@ -333,8 +443,48 @@ bool NutsHelper::CheckConnectivity() {
 }
 
 void NutsHelper::Cancel() {
+    resetIdleTimer();  // Reset idle timer on activity
+
     Logger::instance().warning("Operation cancelled by user");
     m_cancelled = true;
+}
+
+bool NutsHelper::checkAuthorization(const QString& actionId) {
+    // Get the D-Bus caller's service name
+    QString callerService = message().service();
+
+    if (callerService.isEmpty()) {
+        Logger::instance().error("Authorization failed: Cannot identify caller");
+        sendErrorReply(QDBusError::AccessDenied, "Cannot identify D-Bus caller");
+        return false;
+    }
+
+    // Create Polkit subject from D-Bus caller
+    PolkitQt1::SystemBusNameSubject subject(callerService);
+
+    // Check authorization
+    PolkitQt1::Authority::Result result = PolkitQt1::Authority::instance()->checkAuthorizationSync(
+        actionId,
+        subject,
+        PolkitQt1::Authority::AllowUserInteraction  // Allow password prompt
+    );
+
+    if (result != PolkitQt1::Authority::Yes) {
+        Logger::instance().error("Authorization failed for action: " + actionId);
+        Logger::instance().error("Caller: " + callerService);
+        sendErrorReply(QDBusError::AccessDenied,
+                      "Authorization required for " + actionId);
+        return false;
+    }
+
+    Logger::instance().info("Authorization granted for action: " + actionId);
+    return true;
+}
+
+void NutsHelper::resetIdleTimer() {
+    if (m_idleTimer) {
+        m_idleTimer->start();  // Reset the timer
+    }
 }
 
 } // namespace Nuts

@@ -23,6 +23,16 @@ public:
     QString xfsDir() const { return m_xfsDir; }
     QString logFile() const { return m_logFile; }
     QString branch() const { return m_branch; }
+    QString workDir() const { return m_workDir; }
+
+    // URL configuration getters
+    QString queryFileUrl() const;
+    QString componentBaseUrl() const;
+    QString osReleaseUrl() const { return m_osReleaseUrl; }
+    QString otaBaseUrl() const { return m_otaBaseUrl; }
+    QString releaseNotesUrl() const;
+    QString connectivityCheckUrl() const { return m_connectivityCheckUrl; }
+    QString githubConnectivityCheckUrl() const { return m_githubConnectivityCheckUrl; }
 
     void setDownloadDir(const QString& dir) { m_downloadDir = dir; }
     void setSquashfsDir(const QString& dir) { m_squashfsDir = dir; }
@@ -43,6 +53,16 @@ private:
     QString m_xfsDir{"/home/.nuts/xfs"};
     QString m_logFile{"/var/log/nuts.log"};
     QString m_branch{"main"};
+    QString m_workDir{"/var/cache/nuts"};
+
+    // Centralized URL configuration
+    QString m_queryFileUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts/{branch}/tmp/nuts-query.info"};
+    QString m_componentBaseUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts/{branch}/tmp/"};
+    QString m_osReleaseUrl{"https://raw.githubusercontent.com/Nitrux/nitrux-base-files/refs/heads/main/etc/os-release"};
+    QString m_otaBaseUrl{"https://master.dl.sourceforge.net/project/nitruxos/Updates/"};
+    QString m_releaseNotesUrlTemplate{"https://raw.githubusercontent.com/Nitrux/storage/master/Updates/nuts-summary-{version}.md"};
+    QString m_connectivityCheckUrl{"http://1.1.1.1"};
+    QString m_githubConnectivityCheckUrl{"https://raw.githubusercontent.com/Nitrux/storage/refs/heads/master/Other/sample1.txt"};
 };
 
 } // namespace Nuts

@@ -46,7 +46,7 @@ private:
     QString m_updateChecksum;
     QMap<QString, QString> m_queryData;
 
-    bool downloadComponent(const QString& componentName, const QString& branch);
+    bool downloadAndVerifyComponent(const QString& componentName, const QString& expectedChecksum);
 };
 
 } // namespace Nuts

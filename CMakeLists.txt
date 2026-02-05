@@ -9,9 +9,20 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-# x86-64-v3 optimizations
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64-v3 -mtune=generic -fexceptions")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=x86-64-v3 -mtune=generic")
+# CPU optimization option
+option(USE_X86_64_V3 "Enable x86-64-v3 optimizations (requires AVX2, Haswell/Zen or newer)" ON)
+
+# Apply CPU optimization flags
+if(USE_X86_64_V3)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64-v3 -mtune=generic -fexceptions")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=x86-64-v3 -mtune=generic")
+    message(STATUS "Building with x86-64-v3 optimizations (AVX2 required)")
+    message(STATUS "  Minimum CPUs: Intel Haswell (2013+), AMD Zen (2017+)")
+else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64 -mtune=generic -fexceptions")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=x86-64 -mtune=generic")
+    message(STATUS "Building with x86-64 baseline (maximum compatibility)")
+endif()
 
 # Find required packages
 find_package(ECM REQUIRED NO_MODULE)
@@ -31,6 +42,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     DBus
     Widgets
     Network
+    Concurrent
 )
 
 find_package(KF6 REQUIRED COMPONENTS
