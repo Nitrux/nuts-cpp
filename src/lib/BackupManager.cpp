@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2026 Nitrux Latinoamericana S.C.
-
 #include "nuts/BackupManager.h"
 #include "nuts/Logger.h"
 #include "nuts/Config.h"
@@ -112,7 +109,6 @@ bool BackupManager::executeZstdCompress(const QString& inputFile, const QString&
         "-o", outputFile
     };
 
-    // SECURITY: Use absolute path to prevent PATH injection
     process.start("/usr/bin/zstd", args);
 
     if (!process.waitForStarted()) {
@@ -132,7 +128,6 @@ bool BackupManager::restoreBackup(const QString& backupPath, const QString& targ
 
     // First, wipe the target directory
     QProcess wipProcess;
-    // SECURITY: Use absolute path to prevent PATH injection
     wipProcess.start("/usr/bin/find", {targetMount, "-mindepth", "1", "-delete"});
     wipProcess.waitForFinished(-1);
 
@@ -156,7 +151,6 @@ bool BackupManager::executeXfsrestore(const QString& backupFile, const QString& 
         targetMount
     };
 
-    // SECURITY: Use absolute path to prevent PATH injection
     process.start("/usr/sbin/xfsrestore", args);
 
     if (!process.waitForStarted()) {
@@ -205,7 +199,6 @@ bool BackupManager::executeZstdDecompress(const QString& inputFile, const QStrin
         inputFile
     };
 
-    // SECURITY: Use absolute path to prevent PATH injection
     process.start("/usr/bin/zstd", args);
 
     if (!process.waitForStarted()) {

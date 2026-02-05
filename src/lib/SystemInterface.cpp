@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2026 Nitrux Latinoamericana S.C.
-
 #include "nuts/SystemInterface.h"
 #include "nuts/Logger.h"
 #include "nuts/Config.h"
@@ -14,7 +11,7 @@
 #include <QEventLoop>
 #include <QTimer>
 #include <QFileInfo>
-#include <unistd.h> // Required for chown
+#include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -23,7 +20,6 @@ namespace Nuts {
 
 SystemInterface::SystemInterface(QObject* parent)
     : QObject(parent) {
-    // m_networkManager removed: We now use local instances for thread safety
 }
 
 bool SystemInterface::executeCommand(const QString& program, const QStringList& arguments,
@@ -75,7 +71,6 @@ SystemInfo SystemInterface::getSystemInfo() {
 QString SystemInterface::getRootPartition() {
     QString output, error;
 
-    // Use absolute path for findmnt
     if (executeCommand("/usr/bin/findmnt", {"-n", "-o", "SOURCE", "/media/root-ro"}, output, error)) {
         return output.trimmed();
     }
@@ -89,7 +84,6 @@ QString SystemInterface::getRootPartition() {
 
 QString SystemInterface::getPartitionLabel(const QString& device) {
     QString output, error;
-    // Use absolute path for blkid
     if (executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "LABEL", device}, output, error)) {
         return output.trimmed();
     }
@@ -98,7 +92,6 @@ QString SystemInterface::getPartitionLabel(const QString& device) {
 
 QString SystemInterface::getPartitionFilesystem(const QString& device) {
     QString output, error;
-    // Use absolute path for blkid
     if (executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "TYPE", device}, output, error)) {
         return output.trimmed();
     }
@@ -107,12 +100,10 @@ QString SystemInterface::getPartitionFilesystem(const QString& device) {
 
 bool SystemInterface::isOverlayActive() {
     QString output, error;
-    // Use absolute path for mount
     return executeCommand("/usr/bin/mount", {}, output, error) && output.contains("overlayroot");
 }
 
 bool SystemInterface::checkInternetConnectivity() {
-    // Thread Safety: Create QNAM locally
     QNetworkAccessManager manager;
     
     QUrl url(Config::instance().connectivityCheckUrl());
@@ -147,7 +138,6 @@ bool SystemInterface::checkInternetConnectivity() {
 }
 
 bool SystemInterface::checkGitHubConnectivity() {
-    // Thread Safety: Create QNAM locally
     QNetworkAccessManager manager;
 
     QUrl url(Config::instance().githubConnectivityCheckUrl());
@@ -191,7 +181,6 @@ bool SystemInterface::mountPartition(const QString& device, const QString& mount
         }
     }
 
-    // Use absolute path for mount
     bool result = executeCommand("/usr/bin/mount", {"-t", "auto", device, mountPoint}, output, error);
 
     if (result) {
@@ -205,7 +194,6 @@ bool SystemInterface::mountPartition(const QString& device, const QString& mount
 
 bool SystemInterface::unmountPartition(const QString& mountPoint) {
     QString output, error;
-    // Use absolute path for umount
     bool result = executeCommand("/usr/bin/umount", {mountPoint}, output, error);
 
     if (result) {
@@ -219,12 +207,10 @@ bool SystemInterface::unmountPartition(const QString& mountPoint) {
 
 bool SystemInterface::isMounted(const QString& mountPoint) {
     QString output, error;
-    // Use absolute path for mountpoint
     return executeCommand("/usr/bin/mountpoint", {"-q", mountPoint}, output, error);
 }
 
 bool SystemInterface::executeInOverlay(const QStringList& command, QString& output, QString& error) {
-    // Use absolute path for overlayroot-chroot
     QString program = "/usr/sbin/overlayroot-chroot";
     return executeCommand(program, command, output, error);
 }
@@ -232,7 +218,6 @@ bool SystemInterface::executeInOverlay(const QStringList& command, QString& outp
 bool SystemInterface::downloadFile(const QString& url, const QString& destination) {
     Logger::instance().info("Downloading: " + url);
 
-    // Thread Safety: Create QNAM locally
     QNetworkAccessManager manager;
 
     QUrl qurl(url);
@@ -359,7 +344,6 @@ bool SystemInterface::verifyGPGSignature(const QString& dataFile, const QString&
         return false;
     }
 
-    // Use absolute path for gpgv to prevent PATH injection
     QString program = "/usr/bin/gpgv";
     
     QStringList args;
@@ -381,7 +365,6 @@ bool SystemInterface::verifyGPGSignature(const QString& dataFile, const QString&
 }
 
 qint64 SystemInterface::getRemoteFileSize(const QString& url) {
-    // Thread Safety: Create QNAM locally
     QNetworkAccessManager manager;
 
     QUrl qurl(url);
@@ -443,8 +426,7 @@ bool SystemInterface::enforceSecurePermissions(const QString& path) {
     QByteArray encodedPath = QFile::encodeName(path);
     const char* pathStr = encodedPath.constData();
 
-    // SECURITY: Open file descriptor, failing if it's a symlink (O_NOFOLLOW)
-    // This prevents TOCTOU/Symlink attacks where the path is swapped for a system file.
+    // Open file descriptor, failing if it's a symlink (O_NOFOLLOW)
     int fd = ::open(pathStr, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     if (fd == -1) {
         Logger::instance().error("SECURITY: Failed to open directory securely (possible symlink or non-existent): " + path);
@@ -458,7 +440,7 @@ bool SystemInterface::enforceSecurePermissions(const QString& path) {
         return false;
     }
 
-    // CRITICAL: Ensure ownership is root (0). Use fchown on the file descriptor.
+    // Ensure ownership is root (0). Use fchown on the file descriptor.
     if (st.st_uid != 0) {
         Logger::instance().warning("Directory not owned by root! Attempting to seize ownership: " + path);
         

@@ -1,9 +1,6 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2026 Nitrux Latinoamericana S.C.
-
 #include "nuts/Config.h"
 #include <QFile>
-#include <QFileInfo>  // <--- Added this required header
+#include <QFileInfo> 
 #include <QTextStream>
 #include <QDebug>
 #include <QSettings>
@@ -21,7 +18,7 @@ bool Config::load(const QString& configPath) {
         return false;
     }
 
-    // Security Check: Verify ownership and permissions
+    // Verify ownership and permissions
     QFileInfo configInfo(configPath);
     
     // Ensure file is owned by root (ID 0)

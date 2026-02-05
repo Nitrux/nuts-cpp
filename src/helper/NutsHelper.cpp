@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2026 Nitrux Latinoamericana S.C.
-
 #include "NutsHelper.h"
 #include "nuts/Config.h"
 #include "nuts/Logger.h"

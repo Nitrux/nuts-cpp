@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2026 Nitrux Latinoamericana S.C.
-
 #include "NutsClient.h"
 #include <QDBusReply>
 #include <QDBusConnectionInterface>
@@ -195,7 +192,7 @@ void NutsClient::checkForUpdates() {
     // Get release notes URL from Helper
     QString releaseNotesUrl = result["releaseNotesUrl"].toString();
 
-    // Fetch release notes (display-only, no security risk)
+    // Fetch release notes
     QNetworkAccessManager* notesManager = new QNetworkAccessManager(this);
     QNetworkReply* notesReply = notesManager->get(QNetworkRequest(QUrl(releaseNotesUrl)));
 

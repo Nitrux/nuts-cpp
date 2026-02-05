@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2026 Nitrux Latinoamericana S.C.
-
 #include "nuts/UpdateManager.h"
 #include "nuts/Logger.h"
 #include "nuts/Config.h"
@@ -103,7 +100,7 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
          m_otaChecksum = m_updateChecksum;
     }
 
-    // SECURITY CHECK: Ensure external tool checksums are present
+    // Ensure external tool checksums are present
     if (m_queryData.value("DPKG_AI_SUM").isEmpty()) {
         Logger::instance().error("CRITICAL: DPKG_AI_SUM missing from metadata. Cannot verify update tools.");
         return false;
@@ -128,9 +125,9 @@ bool UpdateManager::isUpdateAvailable(const QString& currentVersion) {
     return (currentVersion == m_minTarget);
 }
 
-// ---------------------------------------------------------------------------------
+// -----------------
 // Core Update Logic
-// ---------------------------------------------------------------------------------
+// -----------------
 
 bool UpdateManager::applyUpdate() {
     Logger::instance().info("Starting System Update Process...");
@@ -184,9 +181,9 @@ bool UpdateManager::applyUpdate() {
     return true;
 }
 
-// ---------------------------------------------------------------------------------
+// ----------------------
 // Helper Implementations
-// ---------------------------------------------------------------------------------
+// ----------------------
 
 bool UpdateManager::prepareSystemPartitions() {
     QString output, error;
@@ -268,7 +265,7 @@ bool UpdateManager::mountOTAPayload() {
 }
 
 bool UpdateManager::prepareUpdateTools() {
-    // SECURITY: Use secure work directory (root:root 0700) instead of /tmp
+    // Use secure work directory (root:root 0700) instead of /tmp
     // This prevents other users from manipulating the extracted files.
     QString workDir = Config::instance().workDir();
     QString appImagePath = workDir + "/dpkg-tooling.AppImage";
@@ -284,11 +281,11 @@ bool UpdateManager::prepareUpdateTools() {
             return false;
         }
 
-        // 2. SECURITY: Verify Checksum
+        // 2. Verify Checksum
         // We MUST verify this before executing it, as it runs as root.
         Logger::instance().info("Verifying update tools integrity...");
         if (!m_sysInterface->verifyChecksum(appImagePath, expectedChecksum)) {
-            Logger::instance().error("CRITICAL: Update tools (AppImage) checksum mismatch!");
+            Logger::instance().error("CRITICAL: OTA tooling checksum mismatch!");
             Logger::instance().error("Possible compromise attempt. Aborting.");
             QFile::remove(appImagePath);
             return false;
@@ -341,13 +338,13 @@ bool UpdateManager::prepareUpdateTools() {
 bool UpdateManager::syncPackageData() {
     QString url = QString("https://raw.githubusercontent.com/Nitrux/storage/master/Other/var-lib-dpkg-%1.tar.xz").arg(m_minTarget);
     
-    // SECURITY: Download to secure work directory first
+    // Download to secure work directory first
     QString tarPath = Config::instance().workDir() + "/var-lib-dpkg.tar.xz";
     QString expectedChecksum = m_queryData.value("VAR_LIB_SUM");
 
     if (!m_sysInterface->downloadFile(url, tarPath)) return false;
 
-    // SECURITY: Verify Checksum before extraction
+    // Verify Checksum before extraction
     // Extracting an unverified archive to / is extremely dangerous (zip slip / overwrite attacks).
     Logger::instance().info("Verifying package database archive...");
     if (!m_sysInterface->verifyChecksum(tarPath, expectedChecksum)) {
@@ -395,7 +392,7 @@ bool UpdateManager::performPackageUpdates() {
     }
 
     // Phase 1: Unpack
-    // STABILITY FIX: Process in batches to avoid exceeding ARG_MAX
+    // Process in batches to avoid exceeding ARG_MAX
     const int BATCH_SIZE = 50; 
     Logger::instance().info(QString("Unpacking %1 packages in batches...").arg(debFiles.size()));
     
@@ -404,7 +401,7 @@ bool UpdateManager::performPackageUpdates() {
         Logger::instance().info(QString("Unpacking batch %1 of %2...").arg((i/BATCH_SIZE)+1).arg((debFiles.size()+BATCH_SIZE-1)/BATCH_SIZE));
         
         QStringList args;
-        // SECURITY: Use secure work directory for temporary files to prevent /tmp race conditions
+        // Use secure work directory for temporary files to prevent /tmp race conditions
         args << "DEBIAN_FRONTEND=noninteractive" << "TMPDIR=" + Config::instance().workDir();
         args << m_pkgManagerPath << "--force-all" << "--unpack";
         args << batch;
@@ -416,7 +413,7 @@ bool UpdateManager::performPackageUpdates() {
         }
     }
 
-    // Phase 2: Configure Loop
+    // Phase 2: Configure loop
     Logger::instance().info("Configuring packages...");
     int maxPasses = 15;
     int pass = 1;
@@ -457,7 +454,6 @@ bool UpdateManager::performPackageUpdates() {
 }
 
 bool UpdateManager::runCleanupCrew() {
-    // Logic remains: download secured ccu and run it.
     QString ccuChecksum = m_queryData.value("NUTS_CCU_CHECKSUM");
     if (!downloadAndVerifyComponent("nuts-ccu", ccuChecksum)) return false;
 
