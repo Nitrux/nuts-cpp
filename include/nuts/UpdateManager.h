@@ -44,7 +44,20 @@ private:
     QString m_minTarget;
     QString m_updateUrl;
     QString m_updateChecksum;
+    QString m_otaChecksum;
+    QString m_pkgManagerPath;
+    QStringList m_mirrorList;
     QMap<QString, QString> m_queryData;
+
+    // Helper methods for update process
+    bool prepareSystemPartitions();
+    bool downloadOTAPayload();
+    bool mountOTAPayload();
+    bool prepareUpdateTools();
+    bool syncPackageData();
+    bool performPackageUpdates();
+    bool runCleanupCrew();
+    void cleanup();
 
     bool downloadAndVerifyComponent(const QString& componentName, const QString& expectedChecksum);
 };

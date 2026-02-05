@@ -15,6 +15,9 @@
 #include <QTimer>
 #include <QFileInfo>
 #include <unistd.h> // Required for chown
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 namespace Nuts {
 
@@ -437,30 +440,43 @@ bool SystemInterface::createSecureDirectory(const QString& path) {
 }
 
 bool SystemInterface::enforceSecurePermissions(const QString& path) {
-    QFileInfo info(path);
-    if (!info.exists()) {
-        Logger::instance().error("Cannot enforce permissions on non-existent path: " + path);
+    QByteArray encodedPath = QFile::encodeName(path);
+    const char* pathStr = encodedPath.constData();
+
+    // SECURITY: Open file descriptor, failing if it's a symlink (O_NOFOLLOW)
+    // This prevents TOCTOU/Symlink attacks where the path is swapped for a system file.
+    int fd = ::open(pathStr, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (fd == -1) {
+        Logger::instance().error("SECURITY: Failed to open directory securely (possible symlink or non-existent): " + path);
         return false;
     }
 
-    // CRITICAL: Ensure ownership is root (0)
-    if (info.ownerId() != 0) {
+    struct stat st;
+    if (::fstat(fd, &st) == -1) {
+        Logger::instance().error("Failed to fstat directory: " + path);
+        ::close(fd);
+        return false;
+    }
+
+    // CRITICAL: Ensure ownership is root (0). Use fchown on the file descriptor.
+    if (st.st_uid != 0) {
         Logger::instance().warning("Directory not owned by root! Attempting to seize ownership: " + path);
         
-        // chown(path, owner, group) - 0 is root
-        if (::chown(QFile::encodeName(path).constData(), 0, 0) != 0) {
+        if (::fchown(fd, 0, 0) != 0) {
              Logger::instance().error("SECURITY FAILURE: Failed to claim ownership of directory. Aborting.");
+             ::close(fd);
              return false;
         }
     }
 
-    // Set permissions to 0700 (owner read/write/execute only)
-    QFile::Permissions perms = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
-    if (!QFile::setPermissions(path, perms)) {
+    // Set permissions to 0700 (owner read/write/execute only) using fchmod
+    if (::fchmod(fd, S_IRUSR | S_IWUSR | S_IXUSR) != 0) {
         Logger::instance().error("Failed to set secure permissions on: " + path);
+        ::close(fd);
         return false;
     }
 
+    ::close(fd);
     Logger::instance().info("Enforced secure permissions (0700, root:root) on: " + path);
     return true;
 }

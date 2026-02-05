@@ -16,6 +16,8 @@ namespace Nuts {
 
 NutsClient::NutsClient(QObject* parent)
     : QObject(parent) {
+    // Detect Live session (same check as in NutsHelper)
+    m_isLiveSession = QFile::exists("/usr/bin/calamares");
     connectToHelper();
 }
 

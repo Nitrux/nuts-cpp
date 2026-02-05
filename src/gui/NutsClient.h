@@ -24,6 +24,7 @@ class NutsClient : public QObject {
     Q_PROPERTY(QString updateVersion READ updateVersion NOTIFY updateInfoChanged)
     Q_PROPERTY(QString updateSize READ updateSize NOTIFY updateInfoChanged)
     Q_PROPERTY(QString updateNotes READ updateNotes NOTIFY updateInfoChanged)
+    Q_PROPERTY(bool isLiveSession READ isLiveSession NOTIFY isLiveSessionChanged)
 
 public:
     explicit NutsClient(QObject* parent = nullptr);
@@ -39,6 +40,7 @@ public:
     QString updateVersion() const { return m_updateVersion; }
     QString updateSize() const { return m_updateSize; }
     QString updateNotes() const { return m_updateNotes; }
+    bool isLiveSession() const { return m_isLiveSession; }
 
 public Q_SLOTS:
     void performUpdate();
@@ -57,6 +59,7 @@ Q_SIGNALS:
     void operationFailed(const QString& error);
     void updateAvailableChanged();
     void updateInfoChanged();
+    void isLiveSessionChanged();
 
 private Q_SLOTS:
     void onProgressChanged(int status, int percentage, const QString& message, const QString& details);
@@ -81,6 +84,7 @@ private:
     QString m_updateVersion;
     QString m_updateSize;
     QString m_updateNotes;
+    bool m_isLiveSession{false};
 };
 
 } // namespace Nuts
