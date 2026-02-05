@@ -14,6 +14,16 @@ set -e
 mkdir -p build && cd build
 
 HOST_MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
+HOST_ARCH=$(dpkg-architecture -qDEB_HOST_ARCH)
+
+# Determine if we should use x86-64-v3 optimizations
+USE_X86_64_V3_OPT="ON"
+if [ "$HOST_ARCH" != "amd64" ]; then
+	USE_X86_64_V3_OPT="OFF"
+	echo "Building for $HOST_ARCH - x86-64-v3 optimizations disabled"
+else
+	echo "Building for $HOST_ARCH - x86-64-v3 optimizations enabled"
+fi
 
 cmake \
 	-DCMAKE_INSTALL_PREFIX=/usr \
@@ -27,6 +37,7 @@ cmake \
 	-DCMAKE_INSTALL_RUNSTATEDIR=/run "-GUnix Makefiles" \
 	-DCMAKE_VERBOSE_MAKEFILE=ON \
 	-DCMAKE_INSTALL_LIBDIR="/usr/lib/${HOST_MULTIARCH}" \
+	-DUSE_X86_64_V3="${USE_X86_64_V3_OPT}" \
 	..
 
 make -j"$(nproc)"
