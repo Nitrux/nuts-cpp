@@ -132,6 +132,13 @@ bool UpdateManager::isUpdateAvailable(const QString& currentVersion) {
 bool UpdateManager::applyUpdate() {
     Logger::instance().info("Starting System Update Process...");
 
+    // Check available disk space before starting
+    Q_EMIT updateProgress(2, "Checking disk space");
+    if (!checkDiskSpace()) {
+        Logger::instance().error("Insufficient disk space for update");
+        return false;
+    }
+
     Q_EMIT updateProgress(5, "Mounting partitions");
     if (!prepareSystemPartitions()) {
         cleanup();
@@ -513,6 +520,49 @@ bool UpdateManager::downloadUpdateArchive(const QString& url, const QString& des
 
 bool UpdateManager::verifyUpdateArchive(const QString& filePath, const QString& expectedChecksum) {
     return m_sysInterface->verifyChecksum(filePath, expectedChecksum);
+}
+
+bool UpdateManager::checkDiskSpace() {
+    // Check space on /home for OTA download
+    QString downloadDir = Config::instance().downloadDir();
+    qint64 availableHome = m_sysInterface->getAvailableSpace(downloadDir);
+
+    // Estimate needed space: OTA size (from metadata) + 20% buffer
+    qint64 estimatedOtaSize = 2LL * 1024 * 1024 * 1024; // Default 2GB if not known
+
+    // Try to get actual size from update URL if available
+    if (!m_updateUrl.isEmpty()) {
+        qint64 remoteSize = m_sysInterface->getRemoteFileSize(m_updateUrl);
+        if (remoteSize > 0) {
+            estimatedOtaSize = remoteSize;
+        }
+    }
+
+    qint64 requiredHome = estimatedOtaSize + (estimatedOtaSize / 5); // +20% buffer
+
+    if (availableHome < requiredHome) {
+        Logger::instance().error(QString("Insufficient space on /home. Required: %1 GB, Available: %2 GB")
+                                .arg(requiredHome / (1024.0 * 1024 * 1024), 0, 'f', 2)
+                                .arg(availableHome / (1024.0 * 1024 * 1024), 0, 'f', 2));
+        return false;
+    }
+
+    // Check space on root for unpacking (need at least 1GB free after update)
+    qint64 availableRoot = m_sysInterface->getAvailableSpace("/");
+    qint64 requiredRoot = 1LL * 1024 * 1024 * 1024; // 1GB minimum
+
+    if (availableRoot < requiredRoot) {
+        Logger::instance().error(QString("Insufficient space on root partition. Required: %1 GB, Available: %2 GB")
+                                .arg(requiredRoot / (1024.0 * 1024 * 1024), 0, 'f', 2)
+                                .arg(availableRoot / (1024.0 * 1024 * 1024), 0, 'f', 2));
+        return false;
+    }
+
+    Logger::instance().info(QString("Disk space check passed. Home: %1 GB free, Root: %2 GB free")
+                           .arg(availableHome / (1024.0 * 1024 * 1024), 0, 'f', 2)
+                           .arg(availableRoot / (1024.0 * 1024 * 1024), 0, 'f', 2));
+
+    return true;
 }
 
 } // namespace Nuts

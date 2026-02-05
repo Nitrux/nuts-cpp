@@ -12,15 +12,21 @@
 #include <PolkitQt1/Subject>
 #include <unistd.h>
 #include <sys/reboot.h>
+#include <signal.h>
 
 namespace Nuts {
 
+// Static instance for signal handler
+NutsHelper* NutsHelper::s_instance = nullptr;
+
 NutsHelper::NutsHelper(QObject* parent)
     : QObject(parent) {
+    s_instance = this;
     initialize();
 }
 
 NutsHelper::~NutsHelper() {
+    s_instance = nullptr;
     cleanup();
 }
 
@@ -77,6 +83,16 @@ void NutsHelper::initialize() {
         QCoreApplication::quit();
     });
     m_idleTimer->start();
+
+    // Set up signal handlers for graceful shutdown
+    struct sigaction sa;
+    sa.sa_handler = &NutsHelper::signalHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+
+    sigaction(SIGTERM, &sa, nullptr);
+    sigaction(SIGINT, &sa, nullptr);
+    sigaction(SIGHUP, &sa, nullptr);
 
     Logger::instance().info("NUTS helper initialized (will exit after 60s of inactivity)");
 }
@@ -481,6 +497,42 @@ void NutsHelper::resetIdleTimer() {
     if (m_idleTimer) {
         m_idleTimer->start();  // Reset the timer
     }
+}
+
+void NutsHelper::signalHandler(int signal) {
+    if (s_instance) {
+        Logger::instance().warning(QString("Received signal %1, performing emergency cleanup").arg(signal));
+        s_instance->emergencyCleanup();
+    }
+    QCoreApplication::exit(128 + signal);
+}
+
+void NutsHelper::emergencyCleanup() {
+    Logger::instance().warning("Emergency cleanup initiated");
+
+    // Attempt to unmount any mounted filesystems
+    if (m_sysInterface) {
+        QString squashfsDir = Config::instance().squashfsDir();
+
+        // Try to unmount in reverse order
+        m_sysInterface->unmountPartition(squashfsDir);
+        m_sysInterface->unmountPartition("/var/lib");
+        m_sysInterface->unmountPartition("/home");
+    }
+
+    // Remove temporary dpkg symlinks
+    QStringList tools = {"dpkg", "dpkg-deb", "dpkg-query", "update-alternatives",
+                         "dpkg-divert", "dpkg-realpath", "dpkg-split",
+                         "dpkg-statoverride", "dpkg-trigger", "dpkg-maintscript-helper"};
+
+    for (const QString& tool : tools) {
+        QString linkPath = "/usr/bin/" + tool;
+        if (QFile::exists(linkPath)) {
+            QFile::remove(linkPath);
+        }
+    }
+
+    Logger::instance().info("Emergency cleanup completed");
 }
 
 } // namespace Nuts

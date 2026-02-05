@@ -38,6 +38,7 @@ Q_SIGNALS:
 private:
     void initialize();
     void cleanup();
+    void emergencyCleanup();
 
     void handleUpdateOperation();
     void handleRescueOperation();
@@ -48,6 +49,9 @@ private:
     void connectSignals();
     bool checkAuthorization(const QString& actionId);
     void resetIdleTimer();
+
+    static void signalHandler(int signal);
+    static NutsHelper* s_instance;
 
     SystemInterface* m_sysInterface{nullptr};
     BackupManager* m_backupManager{nullptr};

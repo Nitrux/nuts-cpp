@@ -218,12 +218,32 @@ bool SystemInterface::executeInOverlay(const QStringList& command, QString& outp
 bool SystemInterface::downloadFile(const QString& url, const QString& destination) {
     Logger::instance().info("Downloading: " + url);
 
+    // Check if partial download exists
+    QFile partialFile(destination + ".partial");
+    qint64 existingBytes = 0;
+    bool resuming = false;
+
+    if (partialFile.exists()) {
+        existingBytes = partialFile.size();
+        if (existingBytes > 0) {
+            Logger::instance().info(QString("Found partial download (%1 MB), attempting resume")
+                                   .arg(existingBytes / (1024.0 * 1024.0), 0, 'f', 2));
+            resuming = true;
+        }
+    }
+
     QNetworkAccessManager manager;
 
     QUrl qurl(url);
     QNetworkRequest request(qurl);
-    request.setTransferTimeout(600000); 
+    request.setTransferTimeout(600000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+
+    // Add Range header for resume support
+    if (resuming && existingBytes > 0) {
+        QByteArray rangeHeader = QString("bytes=%1-").arg(existingBytes).toUtf8();
+        request.setRawHeader("Range", rangeHeader);
+    }
 
     QNetworkReply* reply = manager.get(request);
 
@@ -253,14 +273,39 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
     bool result = false;
 
     if (reply->error() == QNetworkReply::NoError && timeoutTimer.isActive()) {
-        QFile file(destination);
-        if (file.open(QIODevice::WriteOnly)) {
+        // Check if server supports resume (206 Partial Content)
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        bool serverSupportsResume = (statusCode == 206);
+
+        QIODevice::OpenMode openMode = QIODevice::WriteOnly;
+        if (resuming && serverSupportsResume) {
+            openMode = QIODevice::Append;
+            Logger::instance().info("Server supports resume, appending to existing file");
+        } else if (resuming && !serverSupportsResume) {
+            Logger::instance().warning("Server does not support resume, restarting download");
+            QFile::remove(destination + ".partial");
+            resuming = false;
+        }
+
+        // Write to .partial file first
+        QString targetFile = destination + ".partial";
+        QFile file(targetFile);
+        if (file.open(openMode)) {
             file.write(reply->readAll());
             file.close();
-            result = true;
-            Logger::instance().success("Downloaded: " + QFileInfo(destination).fileName());
+
+            // Move .partial to final destination
+            if (QFile::exists(destination)) {
+                QFile::remove(destination);
+            }
+            if (QFile::rename(targetFile, destination)) {
+                result = true;
+                Logger::instance().success("Downloaded: " + QFileInfo(destination).fileName());
+            } else {
+                Logger::instance().error("Failed to rename partial file to: " + destination);
+            }
         } else {
-            Logger::instance().error("Failed to write file: " + destination);
+            Logger::instance().error("Failed to write file: " + targetFile);
         }
     } else {
         QString error = reply->errorString();
@@ -268,6 +313,7 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
             error = "Download timed out";
         }
         Logger::instance().error("Download failed: " + error);
+        Logger::instance().info("Partial download saved for resume");
     }
 
     timeoutTimer.stop();

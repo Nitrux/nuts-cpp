@@ -50,6 +50,7 @@ private:
     QMap<QString, QString> m_queryData;
 
     // Helper methods for update process
+    bool checkDiskSpace();
     bool prepareSystemPartitions();
     bool downloadOTAPayload();
     bool mountOTAPayload();
