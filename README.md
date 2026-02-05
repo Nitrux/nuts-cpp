@@ -2,6 +2,9 @@
 
 Modern C++ rewrite of NUTS with MauiKit UI and PolicyKit integration.
 
+![NUTS](https://nxos.org/wp-content/uploads/2026/02/screenshot-20260204-141553.png)
+> A simple utility to update Nitrux.
+
 ## Introduction
 
 We designed the Nitrux Update Tool System utility to update [Nitrux OS](https://nxos.org/) and to provide a rollback backup option.
