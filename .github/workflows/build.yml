@@ -1,4 +1,4 @@
-name: Wirecloak Deb
+name: Nuts Deb
 
 on:
   workflow_dispatch:
