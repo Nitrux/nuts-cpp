@@ -15,7 +15,7 @@ class NUTS_EXPORT Config : public QObject {
 public:
     static Config& instance();
 
-    bool load(const QString& configPath = "/etc/nuts.conf");
+    bool load(const QString& configPath = "/etc/nuts-cpp.conf");
 
     QString downloadDir() const { return m_downloadDir; }
     QString squashfsDir() const { return m_squashfsDir; }
@@ -29,7 +29,6 @@ public:
     QString queryFileUrl() const;
     QString componentBaseUrl() const;
     QString osReleaseUrl() const { return m_osReleaseUrl; }
-    QString otaBaseUrl() const { return m_otaBaseUrl; }
     QString releaseNotesUrl() const;
     QString connectivityCheckUrl() const { return m_connectivityCheckUrl; }
     QString githubConnectivityCheckUrl() const { return m_githubConnectivityCheckUrl; }
@@ -51,16 +50,15 @@ private:
     QString m_squashfsDir{"/home/.nuts/squashfs"};
     QString m_backupDir{"/home/.nuts/backup"};
     QString m_xfsDir{"/home/.nuts/xfs"};
-    QString m_logFile{"/var/log/nuts.log"};
+    QString m_logFile{"/var/log/nuts-cpp.log"};
     QString m_branch{"main"};
-    QString m_workDir{"/var/cache/nuts"};
+    QString m_workDir{"/var/cache/nuts-cpp"};
 
     // Centralized URL configuration
-    QString m_queryFileUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts/{branch}/tmp/nuts-query.info"};
-    QString m_componentBaseUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts/{branch}/tmp/"};
-    QString m_osReleaseUrl{"https://raw.githubusercontent.com/Nitrux/nitrux-base-files/refs/heads/main/etc/os-release"};
-    QString m_otaBaseUrl{"https://master.dl.sourceforge.net/project/nitruxos/Updates/"};
-    QString m_releaseNotesUrlTemplate{"https://raw.githubusercontent.com/Nitrux/storage/master/Updates/nuts-summary-{version}.md"};
+    QString m_queryFileUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts-cpp-components/refs/heads/{branch}/query/nuts-cpp-query.info"};
+    QString m_componentBaseUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts-cpp-components/refs/heads/{branch}/components/"};
+    QString m_osReleaseUrl{"https://raw.githubusercontent.com/Nitrux/nitrux-base-files/refs/heads/{branch}/etc/os-release"};
+    QString m_releaseNotesUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts-cpp-components/refs/heads/{branch}/summary/{version}/nuts-cpp-summary.md"};
     QString m_connectivityCheckUrl{"http://1.1.1.1"};
     QString m_githubConnectivityCheckUrl{"https://raw.githubusercontent.com/Nitrux/storage/refs/heads/master/Other/sample1.txt"};
 };

@@ -11,6 +11,7 @@
 #include <QEventLoop>
 #include <QTimer>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -218,14 +219,27 @@ bool SystemInterface::executeInOverlay(const QStringList& command, QString& outp
 bool SystemInterface::downloadFile(const QString& url, const QString& destination) {
     Logger::instance().info("Downloading: " + url);
 
+    // Validate URL scheme (only allow HTTP/HTTPS)
+    if (!validateURL(url)) {
+        Logger::instance().error("SECURITY: Download blocked - invalid URL");
+        return false;
+    }
+
     // Check if partial download exists
     QFile partialFile(destination + ".partial");
     qint64 existingBytes = 0;
     bool resuming = false;
+    const qint64 MAX_PARTIAL_SIZE = 10LL * 1024 * 1024 * 1024; // 10 GB safety limit
 
     if (partialFile.exists()) {
         existingBytes = partialFile.size();
-        if (existingBytes > 0) {
+
+        // Validate partial file size is reasonable
+        if (existingBytes > MAX_PARTIAL_SIZE) {
+            Logger::instance().warning("SECURITY: Partial file too large, removing and restarting download");
+            partialFile.remove();
+            existingBytes = 0;
+        } else if (existingBytes > 0) {
             Logger::instance().info(QString("Found partial download (%1 MB), attempting resume")
                                    .arg(existingBytes / (1024.0 * 1024.0), 0, 'f', 2));
             resuming = true;
@@ -572,6 +586,92 @@ qint64 SystemInterface::getDirectorySize(const QString& path) {
 qint64 SystemInterface::getAvailableSpace(const QString& path) {
     QStorageInfo storage(path);
     return storage.bytesAvailable();
+}
+
+bool SystemInterface::validatePath(const QString& path, const QString& allowedPrefix) {
+    // Check for path traversal sequences
+    if (path.contains("../") || path.contains("..\\")) {
+        Logger::instance().error("SECURITY: Path traversal sequence detected: " + path);
+        return false;
+    }
+
+    // Get canonical path to resolve any symlinks or relative components
+    QFileInfo fileInfo(path);
+    QString canonicalPath = fileInfo.canonicalFilePath();
+
+    // If file doesn't exist yet, get canonical path of parent directory
+    if (canonicalPath.isEmpty()) {
+        QDir parentDir = fileInfo.dir();
+        QString canonicalParent = parentDir.canonicalPath();
+        if (!canonicalParent.isEmpty()) {
+            canonicalPath = canonicalParent + "/" + fileInfo.fileName();
+        } else {
+            // If parent doesn't exist, use absolute path
+            canonicalPath = fileInfo.absoluteFilePath();
+        }
+    }
+
+    // Ensure path doesn't escape allowed directory
+    if (!allowedPrefix.isEmpty() && !canonicalPath.startsWith(allowedPrefix)) {
+        Logger::instance().error("SECURITY: Path escapes allowed directory: " + path);
+        Logger::instance().error("Canonical: " + canonicalPath + ", Allowed: " + allowedPrefix);
+        return false;
+    }
+
+    return true;
+}
+
+bool SystemInterface::validateURL(const QString& url) {
+    QUrl qurl(url);
+
+    if (!qurl.isValid()) {
+        Logger::instance().error("SECURITY: Invalid URL: " + url);
+        return false;
+    }
+
+    // Only allow HTTP and HTTPS protocols
+    QString scheme = qurl.scheme().toLower();
+    if (scheme != "http" && scheme != "https") {
+        Logger::instance().error("SECURITY: Invalid URL scheme (only http/https allowed): " + scheme);
+        return false;
+    }
+
+    // Prevent access to localhost and internal networks (optional based on requirements)
+    QString host = qurl.host().toLower();
+    if (host == "localhost" || host == "127.0.0.1" || host == "::1" ||
+        host.startsWith("192.168.") || host.startsWith("10.") ||
+        host.startsWith("172.16.") || host.startsWith("172.17.") ||
+        host.startsWith("172.18.") || host.startsWith("172.19.") ||
+        host.startsWith("172.20.") || host.startsWith("172.21.") ||
+        host.startsWith("172.22.") || host.startsWith("172.23.") ||
+        host.startsWith("172.24.") || host.startsWith("172.25.") ||
+        host.startsWith("172.26.") || host.startsWith("172.27.") ||
+        host.startsWith("172.28.") || host.startsWith("172.29.") ||
+        host.startsWith("172.30.") || host.startsWith("172.31.") ||
+        host.startsWith("169.254.")) {
+        Logger::instance().error("SECURITY: Internal network URL blocked: " + url);
+        return false;
+    }
+
+    return true;
+}
+
+QString SystemInterface::sanitizeVersionString(const QString& version) {
+    // Only allow alphanumeric characters, dots, hyphens, and underscores
+    QRegularExpression validChars("^[a-zA-Z0-9._-]+$");
+
+    if (!validChars.match(version).hasMatch()) {
+        Logger::instance().error("SECURITY: Invalid version string contains disallowed characters: " + version);
+        return QString();
+    }
+
+    // Additional check: prevent excessive length
+    if (version.length() > 64) {
+        Logger::instance().error("SECURITY: Version string too long: " + version);
+        return QString();
+    }
+
+    return version;
 }
 
 } // namespace Nuts

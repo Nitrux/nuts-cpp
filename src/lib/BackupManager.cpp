@@ -18,6 +18,13 @@ BackupManager::BackupManager(SystemInterface* sysInterface, QObject* parent)
 bool BackupManager::createBackup(const QString& partition, const QString& outputPath) {
     Logger::instance().info("Creating XFS backup of " + partition);
 
+    // Validate output path to prevent path traversal
+    QString backupDir = Config::instance().backupDir();
+    if (!m_sysInterface->validatePath(outputPath, backupDir)) {
+        Logger::instance().error("SECURITY: Invalid backup output path");
+        return false;
+    }
+
     Q_EMIT backupProgress(0, "Starting backup...");
 
     if (!executeXfsdump(partition, outputPath)) {
@@ -72,6 +79,21 @@ bool BackupManager::executeXfsdump(const QString& device, const QString& outputF
 bool BackupManager::compressBackup(const QString& inputPath, const QString& outputPath) {
     Logger::instance().info("Compressing backup with zstd");
 
+    // Validate paths to prevent path traversal
+    QString backupDir = Config::instance().backupDir();
+    QString xfsDir = Config::instance().xfsDir();
+
+    if (!m_sysInterface->validatePath(inputPath, backupDir) &&
+        !m_sysInterface->validatePath(inputPath, xfsDir)) {
+        Logger::instance().error("SECURITY: Invalid input path for compression");
+        return false;
+    }
+
+    if (!m_sysInterface->validatePath(outputPath, xfsDir)) {
+        Logger::instance().error("SECURITY: Invalid output path for compression");
+        return false;
+    }
+
     Q_EMIT compressionProgress(0);
 
     if (!executeZstdCompress(inputPath, outputPath)) {
@@ -82,9 +104,10 @@ bool BackupManager::compressBackup(const QString& inputPath, const QString& outp
     Q_EMIT compressionProgress(100);
     Logger::instance().success("Backup compressed: " + outputPath);
 
-    // Remove uncompressed backup
-    if (QFile::exists(inputPath)) {
-        QFile::remove(inputPath);
+    // Remove uncompressed backup atomically (avoid TOCTOU)
+    QFile inputFile(inputPath);
+    if (inputFile.exists()) {
+        inputFile.remove();
         Logger::instance().info("Removed uncompressed backup");
     }
 
@@ -123,6 +146,19 @@ bool BackupManager::executeZstdCompress(const QString& inputFile, const QString&
 
 bool BackupManager::restoreBackup(const QString& backupPath, const QString& targetMount) {
     Logger::instance().info("Restoring backup to " + targetMount);
+
+    // Validate backup path to prevent path traversal
+    QString xfsDir = Config::instance().xfsDir();
+    if (!m_sysInterface->validatePath(backupPath, xfsDir)) {
+        Logger::instance().error("SECURITY: Invalid backup path for restoration");
+        return false;
+    }
+
+    // Validate target mount point (should be under /mnt or specific mount locations)
+    if (!m_sysInterface->validatePath(targetMount, "/mnt")) {
+        Logger::instance().error("SECURITY: Invalid target mount point for restoration");
+        return false;
+    }
 
     Q_EMIT restorationProgress(0);
 

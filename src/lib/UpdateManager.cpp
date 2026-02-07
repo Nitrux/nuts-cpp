@@ -11,6 +11,7 @@
 #include <QThread>
 #include <QUrl>
 #include <algorithm>
+#include <climits>
 
 namespace Nuts {
 
@@ -24,8 +25,8 @@ bool UpdateManager::downloadQueryFile(const QString& /*branch*/) {
     QString sigUrl = url + ".sig"; 
 
     QString workDir = Config::instance().workDir();
-    QString destination = workDir + "/nuts-query.info";
-    QString sigDestination = workDir + "/nuts-query.info.sig";
+    QString destination = workDir + "/nuts-cpp-query.info";
+    QString sigDestination = workDir + "/nuts-cpp-query.info.sig";
 
     // Ensure secure work directory exists
     if (!m_sysInterface->directoryExists(workDir)) {
@@ -35,11 +36,12 @@ bool UpdateManager::downloadQueryFile(const QString& /*branch*/) {
         }
     }
 
-    if (QFile::exists(destination)) QFile::remove(destination);
-    if (QFile::exists(sigDestination)) QFile::remove(sigDestination);
+    // Remove files atomically (avoid TOCTOU)
+    QFile::remove(destination);
+    QFile::remove(sigDestination);
 
     if (!m_sysInterface->downloadFile(url, destination)) {
-        Logger::instance().error("Failed to download nuts-query.info");
+        Logger::instance().error("Failed to download nuts-cpp-query.info");
         return false;
     }
 
@@ -50,9 +52,9 @@ bool UpdateManager::downloadQueryFile(const QString& /*branch*/) {
         return false;
     }
 
-    Logger::instance().info("Verifying nuts-query.info signature...");
+    Logger::instance().info("Verifying nuts-cpp-query.info signature...");
     if (!m_sysInterface->verifyGPGSignature(destination, sigDestination)) {
-        Logger::instance().error("CRITICAL: Signature verification failed for nuts-query.info!");
+        Logger::instance().error("CRITICAL: Signature verification failed for nuts-cpp-query.info!");
         QFile::remove(destination);
         QFile::remove(sigDestination);
         return false;
@@ -66,7 +68,7 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
     QSettings settings(filePath, QSettings::IniFormat);
 
     if (settings.status() != QSettings::NoError) {
-        Logger::instance().error("Failed to parse nuts-query.info");
+        Logger::instance().error("Failed to parse nuts-cpp-query.info");
         return false;
     }
 
@@ -84,10 +86,19 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
         } else if (key == "UPDATE_CHECKSUM") {
             m_updateChecksum = value;
         } else if (key == "MIRRORLIST" || key == "URL/MIRRORLIST") {
+            // Support comma-separated mirror list (legacy format)
             m_mirrorList = value.split(',', Qt::SkipEmptyParts);
+        } else if (key.startsWith("MIRROR")) {
+            // Support individual MIRROR entries (new format)
+            // Allows: MIRROR1, MIRROR2, MIRROR_US, MIRROR_EU, etc.
+            QString url = value.trimmed();
+            if (!url.isEmpty() && !m_mirrorList.contains(url)) {
+                m_mirrorList.append(url);
+            }
         }
     }
 
+    // Fallback: if no mirrors specified, use UPDATE_URL as single mirror
     if (m_mirrorList.isEmpty() && !m_updateUrl.isEmpty()) {
         m_mirrorList.append(m_updateUrl);
     }
@@ -124,7 +135,48 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
 
 bool UpdateManager::isUpdateAvailable(const QString& currentVersion) {
     if (m_minTarget.isEmpty()) return false;
-    return (currentVersion == m_minTarget);
+
+    // Update is available if current version is LESS THAN target
+    // If currentVersion < MINTARGET → update available
+    // If currentVersion >= MINTARGET → already updated or newer
+    return (compareVersions(currentVersion, m_minTarget) < 0);
+}
+
+int UpdateManager::compareVersions(const QString& version1, const QString& version2) {
+    // Parse version strings (e.g., "6.0.0", "6.0.1", "6.0.0 build.060126")
+    // Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
+
+    // Extract numeric part before any space (ignore build metadata)
+    QString v1 = version1.split(' ').first();
+    QString v2 = version2.split(' ').first();
+
+    // Split by dots
+    QStringList parts1 = v1.split('.');
+    QStringList parts2 = v2.split('.');
+
+    // Pad to same length
+    int maxLen = qMax(parts1.size(), parts2.size());
+    while (parts1.size() < maxLen) parts1.append("0");
+    while (parts2.size() < maxLen) parts2.append("0");
+
+    // Compare each component numerically
+    for (int i = 0; i < maxLen; ++i) {
+        bool ok1, ok2;
+        int num1 = parts1[i].toInt(&ok1);
+        int num2 = parts2[i].toInt(&ok2);
+
+        // If parsing fails, fall back to string comparison
+        if (!ok1 || !ok2) {
+            int cmp = QString::compare(parts1[i], parts2[i]);
+            if (cmp != 0) return (cmp < 0) ? -1 : 1;
+            continue;
+        }
+
+        if (num1 < num2) return -1;
+        if (num1 > num2) return 1;
+    }
+
+    return 0; // versions are equal
 }
 
 // -----------------
@@ -235,13 +287,22 @@ bool UpdateManager::prepareSystemPartitions() {
 bool UpdateManager::downloadOTAPayload() {
     QString otaPath = Config::instance().downloadDir() + "/nuts-ota.squashfs";
 
-    if (QFile::exists(otaPath)) {
+    //Validate path to prevent traversal
+    QString downloadDir = Config::instance().downloadDir();
+    if (!m_sysInterface->validatePath(otaPath, downloadDir)) {
+        Logger::instance().error("SECURITY: Invalid OTA path");
+        return false;
+    }
+
+    //Check and remove atomically (avoid TOCTOU)
+    QFile otaFile(otaPath);
+    if (otaFile.exists()) {
         if (m_sysInterface->verifyChecksum(otaPath, m_otaChecksum)) {
             Logger::instance().success("Existing OTA payload verified.");
             return true;
         }
         Logger::instance().warning("Existing OTA payload corrupt. Re-downloading.");
-        QFile::remove(otaPath);
+        otaFile.remove();
     }
 
     // Sort mirrors by latency for optimal download speed
@@ -289,11 +350,11 @@ bool UpdateManager::downloadOTAPayload() {
                     return true;
                 } else {
                     Logger::instance().error("SquashFS integrity check failed for " + url);
-                    QFile::remove(otaPath);
+                    QFile(otaPath).remove();
                 }
             } else {
                 Logger::instance().error("Checksum mismatch for " + url);
-                QFile::remove(otaPath);
+                QFile(otaPath).remove();
             }
         }
     }
@@ -320,11 +381,23 @@ bool UpdateManager::prepareUpdateTools() {
     QString workDir = Config::instance().workDir();
     QString appImagePath = workDir + "/dpkg-tooling.AppImage";
     QString extractDir = workDir + "/pkgman-extracted";
-    
+
+    // Validate paths to prevent traversal
+    if (!m_sysInterface->validatePath(appImagePath, workDir)) {
+        Logger::instance().error("SECURITY: Invalid AppImage path");
+        return false;
+    }
+    if (!m_sysInterface->validatePath(extractDir, workDir)) {
+        Logger::instance().error("SECURITY: Invalid extract directory path");
+        return false;
+    }
+
     QString appImageUrl = "https://raw.githubusercontent.com/Nitrux/storage/master/Other/AppImages/dpkg-1.22.21-x86_64.AppImage";
     QString expectedChecksum = m_queryData.value("DPKG_AI_SUM");
 
-    if (!QFile::exists(extractDir + "/squashfs-root/AppRun")) {
+    // Check atomically (avoid TOCTOU)
+    QFile appRunFile(extractDir + "/squashfs-root/AppRun");
+    if (!appRunFile.exists()) {
         // 1. Download AppImage
         if (!m_sysInterface->downloadFile(appImageUrl, appImagePath)) {
             Logger::instance().error("Failed to download OTA tooling.");
@@ -337,7 +410,7 @@ bool UpdateManager::prepareUpdateTools() {
         if (!m_sysInterface->verifyChecksum(appImagePath, expectedChecksum)) {
             Logger::instance().error("CRITICAL: OTA tooling checksum mismatch!");
             Logger::instance().error("Possible compromise attempt. Aborting.");
-            QFile::remove(appImagePath);
+            QFile(appImagePath).remove();
             return false;
         }
 
@@ -399,7 +472,7 @@ bool UpdateManager::syncPackageData() {
     Logger::instance().info("Verifying package database archive...");
     if (!m_sysInterface->verifyChecksum(tarPath, expectedChecksum)) {
         Logger::instance().error("CRITICAL: Package database checksum mismatch!");
-        QFile::remove(tarPath);
+        QFile(tarPath).remove();
         return false;
     }
 
@@ -544,11 +617,12 @@ bool UpdateManager::downloadAndVerifyComponent(const QString& componentName, con
 
     if (!m_sysInterface->verifyChecksum(tempDest, expectedChecksum)) {
         Logger::instance().error("Checksum verification failed for " + componentName);
-        QFile::remove(tempDest);
+        QFile(tempDest).remove();
         return false;
     }
 
-    if (QFile::exists(destination)) QFile::remove(destination);
+    // Remove atomically (avoid TOCTOU)
+    QFile::remove(destination);
     QFile::rename(tempDest, destination);
     
     QString output, error;
@@ -621,7 +695,17 @@ bool UpdateManager::checkDiskSpace() {
         }
     }
 
-    qint64 requiredHome = estimatedOtaSize + (estimatedOtaSize / 5); // +20% buffer
+    // Check for integer overflow in size calculation
+    qint64 buffer = estimatedOtaSize / 5;
+    qint64 requiredHome;
+
+    // Check if addition would overflow
+    if (estimatedOtaSize > 0 && buffer > (LLONG_MAX - estimatedOtaSize)) {
+        Logger::instance().error("SECURITY: Integer overflow detected in disk space calculation");
+        return false;
+    }
+
+    requiredHome = estimatedOtaSize + buffer; // +20% buffer
 
     if (availableHome < requiredHome) {
         Logger::instance().error(QString("Insufficient space on /home. Required: %1 GB, Available: %2 GB")

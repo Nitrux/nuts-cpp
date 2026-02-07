@@ -432,9 +432,18 @@ QVariantMap NutsHelper::CheckForUpdates() {
         result["updateSize"] = fileSize;
 
         // Build release notes URL
-        QString releaseNotesUrl = Config::instance().releaseNotesUrl();
-        releaseNotesUrl.replace("{version}", targetVersion);
-        result["releaseNotesUrl"] = releaseNotesUrl;
+        // Sanitize version string to prevent URL injection
+        QString urlVersion = m_sysInterface->sanitizeVersionString(targetVersion);
+        if (urlVersion.isEmpty()) {
+            Logger::instance().error("SECURITY: Invalid version string from update metadata");
+            result["releaseNotesUrl"] = "";
+        } else {
+            urlVersion.replace(" ", "-");
+
+            QString releaseNotesUrl = Config::instance().releaseNotesUrl();
+            releaseNotesUrl.replace("{version}", urlVersion);
+            result["releaseNotesUrl"] = releaseNotesUrl;
+        }
 
         Logger::instance().info("Update available: " + targetVersion);
         Logger::instance().info("Update size: " + QString::number(fileSize / (1024.0 * 1024.0), 'f', 2) + " MB");

@@ -62,6 +62,9 @@ private:
     void cleanup();
 
     bool downloadAndVerifyComponent(const QString& componentName, const QString& expectedChecksum);
+
+    // Version comparison helper
+    static int compareVersions(const QString& version1, const QString& version2);
 };
 
 } // namespace Nuts

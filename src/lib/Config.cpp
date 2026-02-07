@@ -41,19 +41,48 @@ bool Config::load(const QString& configPath) {
         return false;
     }
 
-    // Load directory settings
-    m_downloadDir = settings.value("NUTS_DIR_DLS", m_downloadDir).toString();
-    m_squashfsDir = settings.value("NUTS_DIR_SQS", m_squashfsDir).toString();
-    m_backupDir = settings.value("NUTS_DIR_BAK", m_backupDir).toString();
-    m_xfsDir = settings.value("NUTS_DIR_XFS", m_xfsDir).toString();
-    m_logFile = settings.value("NUTS_LOG", m_logFile).toString();
-    m_branch = settings.value("NUTS_BRANCH", m_branch).toString();
+    // Load directory settings with path validation
+    QString downloadDir = settings.value("NUTS_DIR_DLS", m_downloadDir).toString();
+    QString squashfsDir = settings.value("NUTS_DIR_SQS", m_squashfsDir).toString();
+    QString backupDir = settings.value("NUTS_DIR_BAK", m_backupDir).toString();
+    QString xfsDir = settings.value("NUTS_DIR_XFS", m_xfsDir).toString();
+    QString logFile = settings.value("NUTS_LOG", m_logFile).toString();
+    QString branch = settings.value("NUTS_BRANCH", m_branch).toString();
+
+    // SECURITY: Validate paths don't contain traversal sequences
+    if (downloadDir.contains("../") || downloadDir.contains("..\\")) {
+        qWarning() << "SECURITY ERROR: Download directory contains path traversal sequence!";
+        return false;
+    }
+    if (squashfsDir.contains("../") || squashfsDir.contains("..\\")) {
+        qWarning() << "SECURITY ERROR: SquashFS directory contains path traversal sequence!";
+        return false;
+    }
+    if (backupDir.contains("../") || backupDir.contains("..\\")) {
+        qWarning() << "SECURITY ERROR: Backup directory contains path traversal sequence!";
+        return false;
+    }
+    if (xfsDir.contains("../") || xfsDir.contains("..\\")) {
+        qWarning() << "SECURITY ERROR: XFS directory contains path traversal sequence!";
+        return false;
+    }
+    if (logFile.contains("../") || logFile.contains("..\\")) {
+        qWarning() << "SECURITY ERROR: Log file path contains path traversal sequence!";
+        return false;
+    }
+
+    // Assign validated paths
+    m_downloadDir = downloadDir;
+    m_squashfsDir = squashfsDir;
+    m_backupDir = backupDir;
+    m_xfsDir = xfsDir;
+    m_logFile = logFile;
+    m_branch = branch;
 
     // Load URL settings (with existing defaults)
     m_queryFileUrlTemplate = settings.value("NUTS_QUERY_URL", m_queryFileUrlTemplate).toString();
     m_componentBaseUrlTemplate = settings.value("NUTS_COMPONENT_URL", m_componentBaseUrlTemplate).toString();
     m_osReleaseUrl = settings.value("NUTS_OS_RELEASE_URL", m_osReleaseUrl).toString();
-    m_otaBaseUrl = settings.value("NUTS_OTA_BASE_URL", m_otaBaseUrl).toString();
     m_releaseNotesUrlTemplate = settings.value("NUTS_RELEASE_NOTES_URL", m_releaseNotesUrlTemplate).toString();
 
     return true;

@@ -58,6 +58,11 @@ public:
     qint64 getDirectorySize(const QString& path);
     qint64 getAvailableSpace(const QString& path);
 
+    // Security validation
+    bool validatePath(const QString& path, const QString& allowedPrefix);
+    bool validateURL(const QString& url);
+    QString sanitizeVersionString(const QString& version);
+
     // Command execution
     bool executeCommand(const QString& program, const QStringList& arguments,
                        QString& output, QString& error, int timeout = 120000);
