@@ -78,29 +78,21 @@ void NutsClient::performUpdate() {
 
     showNotification("NUTS Update", "System update starting...", KNotification::Persistent);
 
-    // Use pkexec to start the helper with elevated privileges
-    QProcess* process = new QProcess(this);
-    process->start("pkexec", {"/usr/libexec/nuts-helper"});
+    // Call the D-Bus method directly - D-Bus will auto-start the helper as root
+    // and PolKit will handle the authentication dialog automatically
+    QDBusReply<bool> reply = m_helperInterface->call("PerformUpdate");
+    if (!reply.isValid()) {
+        qWarning() << "Failed to call PerformUpdate:" << reply.error().message();
+        m_busy = false;
+        Q_EMIT busyChanged();
 
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, process](int exitCode, QProcess::ExitStatus) {
-        process->deleteLater();
-
-        if (exitCode == 0) {
-            // Helper started, now call the D-Bus method
-            QDBusReply<bool> reply = m_helperInterface->call("PerformUpdate");
-            if (!reply.isValid()) {
-                qWarning() << "Failed to call PerformUpdate:" << reply.error().message();
-                m_busy = false;
-                Q_EMIT busyChanged();
-                onOperationFailed("Failed to start update: " + reply.error().message());
-            }
-        } else {
-            m_busy = false;
-            Q_EMIT busyChanged();
+        // Check if it was an authentication failure
+        if (reply.error().type() == QDBusError::AccessDenied) {
             onOperationFailed("Authentication cancelled or failed");
+        } else {
+            onOperationFailed("Failed to start update: " + reply.error().message());
         }
-    });
+    }
 }
 
 void NutsClient::performRescue() {
@@ -116,27 +108,21 @@ void NutsClient::performRescue() {
 
     showNotification("NUTS Rescue", "System rescue starting...", KNotification::Persistent);
 
-    QProcess* process = new QProcess(this);
-    process->start("pkexec", {"/usr/libexec/nuts-helper"});
+    // Call the D-Bus method directly - D-Bus will auto-start the helper as root
+    // and PolKit will handle the authentication dialog automatically
+    QDBusReply<bool> reply = m_helperInterface->call("PerformRescue");
+    if (!reply.isValid()) {
+        qWarning() << "Failed to call PerformRescue:" << reply.error().message();
+        m_busy = false;
+        Q_EMIT busyChanged();
 
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, process](int exitCode, QProcess::ExitStatus) {
-        process->deleteLater();
-
-        if (exitCode == 0) {
-            QDBusReply<bool> reply = m_helperInterface->call("PerformRescue");
-            if (!reply.isValid()) {
-                qWarning() << "Failed to call PerformRescue:" << reply.error().message();
-                m_busy = false;
-                Q_EMIT busyChanged();
-                onOperationFailed("Failed to start rescue: " + reply.error().message());
-            }
-        } else {
-            m_busy = false;
-            Q_EMIT busyChanged();
+        // Check if it was an authentication failure
+        if (reply.error().type() == QDBusError::AccessDenied) {
             onOperationFailed("Authentication cancelled or failed");
+        } else {
+            onOperationFailed("Failed to start rescue: " + reply.error().message());
         }
-    });
+    }
 }
 
 void NutsClient::cancel() {
