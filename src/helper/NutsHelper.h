@@ -48,7 +48,6 @@ private:
 
     void connectSignals();
     bool checkAuthorization(const QString& actionId);
-    void resetIdleTimer();
 
     static void signalHandler(int signal);
     static NutsHelper* s_instance;
@@ -59,7 +58,6 @@ private:
 
     bool m_cancelled{false};
     OperationType m_currentOperation;
-    QTimer* m_idleTimer{nullptr};
 };
 
 } // namespace Nuts

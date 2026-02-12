@@ -74,16 +74,6 @@ void NutsHelper::initialize() {
     // Connect signals
     connectSignals();
 
-    // Set up idle timer to exit after 60 seconds of inactivity
-    m_idleTimer = new QTimer(this);
-    m_idleTimer->setInterval(60000);  // 60 seconds
-    m_idleTimer->setSingleShot(true);
-    connect(m_idleTimer, &QTimer::timeout, this, []() {
-        Logger::instance().info("Idle timeout reached, shutting down helper");
-        QCoreApplication::quit();
-    });
-    m_idleTimer->start();
-
     // Set up signal handlers for graceful shutdown
     struct sigaction sa;
     sa.sa_handler = &NutsHelper::signalHandler;
@@ -94,7 +84,7 @@ void NutsHelper::initialize() {
     sigaction(SIGINT, &sa, nullptr);
     sigaction(SIGHUP, &sa, nullptr);
 
-    Logger::instance().info("NUTS helper initialized (will exit after 60s of inactivity)");
+    Logger::instance().info("NUTS helper initialized");
 }
 
 void NutsHelper::cleanup() {
@@ -156,7 +146,6 @@ void NutsHelper::emitProgress(OperationStatus status, int percentage,
 }
 
 bool NutsHelper::PerformUpdate() {
-    resetIdleTimer();  // Reset idle timer on activity
 
     // Check authorization before proceeding
     if (!checkAuthorization("org.nxos.nuts.update")) {
@@ -264,7 +253,6 @@ void NutsHelper::handleUpdateOperation() {
 }
 
 bool NutsHelper::PerformRescue() {
-    resetIdleTimer();  // Reset idle timer on activity
 
     Logger::instance().info("PerformRescue D-Bus method called");
 
@@ -428,7 +416,6 @@ void NutsHelper::handleRescueOperation() {
 }
 
 QVariantMap NutsHelper::GetSystemInfo() {
-    resetIdleTimer();  // Reset idle timer on activity
 
     SystemInfo info = m_sysInterface->getSystemInfo();
 
@@ -446,7 +433,6 @@ QVariantMap NutsHelper::GetSystemInfo() {
 }
 
 QVariantMap NutsHelper::CheckForUpdates() {
-    resetIdleTimer();  // Reset idle timer on activity
 
     QVariantMap result;
 
@@ -516,7 +502,6 @@ QVariantMap NutsHelper::CheckForUpdates() {
 }
 
 bool NutsHelper::CheckConnectivity() {
-    resetIdleTimer();  // Reset idle timer on activity
 
     bool internet = m_sysInterface->checkInternetConnectivity();
     bool github = m_sysInterface->checkGitHubConnectivity();
@@ -525,7 +510,6 @@ bool NutsHelper::CheckConnectivity() {
 }
 
 void NutsHelper::Cancel() {
-    resetIdleTimer();  // Reset idle timer on activity
 
     Logger::instance().warning("Operation cancelled by user");
     m_cancelled = true;
@@ -563,11 +547,6 @@ bool NutsHelper::checkAuthorization(const QString& actionId) {
     return true;
 }
 
-void NutsHelper::resetIdleTimer() {
-    if (m_idleTimer) {
-        m_idleTimer->start();  // Reset the timer
-    }
-}
 
 void NutsHelper::signalHandler(int signal) {
     if (s_instance) {
