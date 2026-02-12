@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.nxos.nuts
+Exec=${KDE_INSTALL_FULL_LIBEXECDIR}/nuts-helper
+User=root

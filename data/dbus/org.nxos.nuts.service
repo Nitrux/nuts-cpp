@@ -1,4 +1,0 @@
-[D-BUS Service]
-Name=org.nxos.nuts
-Exec=/usr/lib/x86_64-linux-gnu/libexec/nuts-helper
-User=root
