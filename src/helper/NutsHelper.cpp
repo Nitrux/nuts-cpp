@@ -266,46 +266,65 @@ void NutsHelper::handleUpdateOperation() {
 bool NutsHelper::PerformRescue() {
     resetIdleTimer();  // Reset idle timer on activity
 
+    Logger::instance().info("PerformRescue D-Bus method called");
+
     // Check authorization before proceeding
+    Logger::instance().info("Checking authorization for org.nxos.nuts.rescue");
     if (!checkAuthorization("org.nxos.nuts.rescue")) {
+        Logger::instance().error("Authorization check failed");
         return false;  // Error already sent by checkAuthorization
     }
 
+    Logger::instance().success("Authorization granted");
     Logger::instance().info("Starting rescue operation");
 
     m_currentOperation = OperationType::Rescue;
     m_cancelled = false;
 
     // Run asynchronously using QtConcurrent to not block D-Bus
+    Logger::instance().info("Launching rescue operation in background thread");
     (void)QtConcurrent::run([this]() {
         handleRescueOperation();
     });
 
+    Logger::instance().info("PerformRescue returning true");
     return true;
 }
 
 void NutsHelper::handleRescueOperation() {
+    Logger::instance().info("=== Starting Rescue Operation ===");
     emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking environment");
 
     // Check if running from Live session
+    Logger::instance().info("Checking for Live session (looking for /usr/bin/calamares)");
     if (!QFile::exists("/usr/bin/calamares")) {
+        Logger::instance().error("Not running from Live session - calamares not found");
         Q_EMIT OperationFailed("Rescue operation can only be run from a Live session");
         return;
     }
+    Logger::instance().success("Live session detected");
 
     // Find partitions with absolute path to prevent PATH injection
+    Logger::instance().info("Searching for NX_ROOT partition");
     QString output, error;
     if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_ROOT"}, output, error)) {
-        Q_EMIT OperationFailed("Cannot find NX_ROOT partition");
+        Logger::instance().error("Failed to find NX_ROOT partition");
+        Logger::instance().error("findfs error: " + error);
+        Q_EMIT OperationFailed("Cannot find NX_ROOT partition. Error: " + error);
         return;
     }
     QString rootPartition = output.trimmed();
+    Logger::instance().info("Found NX_ROOT: " + rootPartition);
 
+    Logger::instance().info("Searching for NX_HOME partition");
     if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_HOME"}, output, error)) {
-        Q_EMIT OperationFailed("Cannot find NX_HOME partition");
+        Logger::instance().error("Failed to find NX_HOME partition");
+        Logger::instance().error("findfs error: " + error);
+        Q_EMIT OperationFailed("Cannot find NX_HOME partition. Error: " + error);
         return;
     }
     QString homePartition = output.trimmed();
+    Logger::instance().info("Found NX_HOME: " + homePartition);
 
     // Mount partitions
     emitProgress(OperationStatus::RestoringBackup, 10, "Mounting partitions");
@@ -313,56 +332,98 @@ void NutsHelper::handleRescueOperation() {
     QString rootMount = "/media/nitrux/NX_ROOT";
     QString homeMount = "/media/nitrux/NX_HOME";
 
+    Logger::instance().info("Creating mount point: " + rootMount);
+    m_sysInterface->createDirectory(rootMount);
+
+    Logger::instance().info("Mounting " + rootPartition + " to " + rootMount);
     if (!m_sysInterface->mountPartition(rootPartition, rootMount)) {
+        Logger::instance().error("Failed to mount root partition");
         Q_EMIT OperationFailed("Failed to mount root partition");
         return;
     }
+    Logger::instance().success("Root partition mounted");
 
+    Logger::instance().info("Creating mount point: " + homeMount);
+    m_sysInterface->createDirectory(homeMount);
+
+    Logger::instance().info("Mounting " + homePartition + " to " + homeMount);
     if (!m_sysInterface->mountPartition(homePartition, homeMount)) {
+        Logger::instance().error("Failed to mount home partition");
+        m_sysInterface->unmountPartition(rootMount);
         Q_EMIT OperationFailed("Failed to mount home partition");
         return;
     }
+    Logger::instance().success("Home partition mounted");
 
     // Locate backup
     QString compressedBackup = homeMount + "/.nuts/xfs/xfs-backup.xfs.zst";
     QString checksumFile = homeMount + "/.nuts/xfs/xfs-backup.md5sum";
 
+    Logger::instance().info("Looking for backup file: " + compressedBackup);
     if (!QFile::exists(compressedBackup)) {
-        Q_EMIT OperationFailed("Backup file not found");
+        Logger::instance().error("Backup file not found at: " + compressedBackup);
+        Logger::instance().info("Listing contents of " + homeMount + "/.nuts/xfs/");
+        QString lsOutput, lsError;
+        m_sysInterface->executeCommand("/usr/bin/ls", {"-la", homeMount + "/.nuts/xfs/"}, lsOutput, lsError);
+        Logger::instance().info("Directory contents:\n" + lsOutput);
+
+        m_sysInterface->unmountPartition(homeMount);
+        m_sysInterface->unmountPartition(rootMount);
+        Q_EMIT OperationFailed("Backup file not found at: " + compressedBackup);
         return;
     }
+    Logger::instance().success("Backup file found");
 
     // Verify backup
     emitProgress(OperationStatus::VerifyingUpdate, 20, "Verifying backup");
+    Logger::instance().info("Verifying backup checksum");
 
     if (!m_backupManager->verifyBackup(compressedBackup, checksumFile)) {
+        Logger::instance().error("Backup verification failed");
+        m_sysInterface->unmountPartition(homeMount);
+        m_sysInterface->unmountPartition(rootMount);
         Q_EMIT OperationFailed("Backup verification failed");
         return;
     }
+    Logger::instance().success("Backup verified successfully");
 
     // Decompress backup
     emitProgress(OperationStatus::DecompressingBackup, 30, "Decompressing backup");
+    Logger::instance().info("Decompressing backup");
 
     QString decompressedBackup = homeMount + "/.nuts/xfs/xfs-backup.xfs";
     if (!m_backupManager->decompressBackup(compressedBackup, decompressedBackup)) {
+        Logger::instance().error("Failed to decompress backup");
+        m_sysInterface->unmountPartition(homeMount);
+        m_sysInterface->unmountPartition(rootMount);
         Q_EMIT OperationFailed("Failed to decompress backup");
         return;
     }
+    Logger::instance().success("Backup decompressed successfully");
 
     // Restore backup
     emitProgress(OperationStatus::RestoringBackup, 50, "Restoring system");
+    Logger::instance().info("Restoring backup to " + rootMount);
 
     if (!m_backupManager->restoreBackup(decompressedBackup, rootMount)) {
+        Logger::instance().error("Failed to restore backup");
+        QFile::remove(decompressedBackup);
+        m_sysInterface->unmountPartition(homeMount);
+        m_sysInterface->unmountPartition(rootMount);
         Q_EMIT OperationFailed("Failed to restore backup");
         return;
     }
+    Logger::instance().success("Backup restored successfully");
 
     // Cleanup
+    Logger::instance().info("Cleaning up temporary files");
     QFile::remove(decompressedBackup);
 
+    Logger::instance().info("Unmounting partitions");
     m_sysInterface->unmountPartition(rootMount);
     m_sysInterface->unmountPartition(homeMount);
 
+    Logger::instance().success("=== Rescue Operation Completed Successfully ===");
     Q_EMIT OperationCompleted(true, "System restored successfully");
 }
 

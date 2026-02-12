@@ -92,6 +92,18 @@ void NutsClient::performUpdate() {
         } else {
             onOperationFailed("Failed to start update: " + reply.error().message());
         }
+    } else {
+        // D-Bus call succeeded
+        bool started = reply.value();
+        if (!started) {
+            qWarning() << "PerformUpdate returned false";
+            m_busy = false;
+            Q_EMIT busyChanged();
+            onOperationFailed("Failed to start update operation");
+        } else {
+            qDebug() << "Update operation started successfully";
+            // Operation is running asynchronously - progress updates will come via signals
+        }
     }
 }
 
@@ -121,6 +133,18 @@ void NutsClient::performRescue() {
             onOperationFailed("Authentication cancelled or failed");
         } else {
             onOperationFailed("Failed to start rescue: " + reply.error().message());
+        }
+    } else {
+        // D-Bus call succeeded
+        bool started = reply.value();
+        if (!started) {
+            qWarning() << "PerformRescue returned false";
+            m_busy = false;
+            Q_EMIT busyChanged();
+            onOperationFailed("Failed to start rescue operation");
+        } else {
+            qDebug() << "Rescue operation started successfully";
+            // Operation is running asynchronously - progress updates will come via signals
         }
     }
 }
