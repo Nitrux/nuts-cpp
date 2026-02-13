@@ -142,7 +142,25 @@ void NutsHelper::connectSignals() {
 
 void NutsHelper::emitProgress(OperationStatus status, int percentage,
                               const QString& message, const QString& details) {
-    Q_EMIT ProgressChanged(static_cast<int>(status), percentage, message, details);
+    // Use QMetaObject::invokeMethod to ensure signal is emitted from main thread
+    // This is required for D-Bus signals to work properly when called from worker threads
+    QMetaObject::invokeMethod(this, [this, status, percentage, message, details]() {
+        Q_EMIT ProgressChanged(static_cast<int>(status), percentage, message, details);
+    }, Qt::QueuedConnection);
+}
+
+void NutsHelper::emitOperationCompleted(bool success, const QString& message) {
+    // Emit from main thread for D-Bus compatibility
+    QMetaObject::invokeMethod(this, [this, success, message]() {
+        Q_EMIT OperationCompleted(success, message);
+    }, Qt::QueuedConnection);
+}
+
+void NutsHelper::emitOperationFailed(const QString& error) {
+    // Emit from main thread for D-Bus compatibility
+    QMetaObject::invokeMethod(this, [this, error]() {
+        Q_EMIT OperationFailed(error);
+    }, Qt::QueuedConnection);
 }
 
 bool NutsHelper::PerformUpdate() {
@@ -287,14 +305,14 @@ void NutsHelper::handleRescueOperation() {
     Logger::instance().info("Checking for Live session (looking for /usr/bin/calamares)");
     if (!QFile::exists("/usr/bin/calamares")) {
         Logger::instance().error("Not running from Live session - calamares not found");
-        Q_EMIT OperationFailed("Rescue operation can only be run from a Live session");
+        emitOperationFailed("Rescue operation can only be run from a Live session");
         return;
     }
     Logger::instance().success("Live session detected");
 
     if (m_cancelled) {
         Logger::instance().warning("Operation cancelled by user");
-        Q_EMIT OperationFailed("Operation cancelled");
+        emitOperationFailed("Operation cancelled");
         return;
     }
 
@@ -304,7 +322,7 @@ void NutsHelper::handleRescueOperation() {
     if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_ROOT"}, output, error)) {
         Logger::instance().error("Failed to find NX_ROOT partition");
         Logger::instance().error("findfs error: " + error);
-        Q_EMIT OperationFailed("Cannot find NX_ROOT partition. Error: " + error);
+        emitOperationFailed("Cannot find NX_ROOT partition. Error: " + error);
         return;
     }
     QString rootPartition = output.trimmed();
@@ -314,7 +332,7 @@ void NutsHelper::handleRescueOperation() {
     if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_HOME"}, output, error)) {
         Logger::instance().error("Failed to find NX_HOME partition");
         Logger::instance().error("findfs error: " + error);
-        Q_EMIT OperationFailed("Cannot find NX_HOME partition. Error: " + error);
+        emitOperationFailed("Cannot find NX_HOME partition. Error: " + error);
         return;
     }
     QString homePartition = output.trimmed();
@@ -332,7 +350,7 @@ void NutsHelper::handleRescueOperation() {
     Logger::instance().info("Mounting " + rootPartition + " to " + rootMount);
     if (!m_sysInterface->mountPartition(rootPartition, rootMount)) {
         Logger::instance().error("Failed to mount root partition");
-        Q_EMIT OperationFailed("Failed to mount root partition");
+        emitOperationFailed("Failed to mount root partition");
         return;
     }
     Logger::instance().success("Root partition mounted");
@@ -340,7 +358,7 @@ void NutsHelper::handleRescueOperation() {
     if (m_cancelled) {
         Logger::instance().warning("Operation cancelled by user");
         m_sysInterface->unmountPartition(rootMount);
-        Q_EMIT OperationFailed("Operation cancelled");
+        emitOperationFailed("Operation cancelled");
         return;
     }
 
@@ -351,7 +369,7 @@ void NutsHelper::handleRescueOperation() {
     if (!m_sysInterface->mountPartition(homePartition, homeMount)) {
         Logger::instance().error("Failed to mount home partition");
         m_sysInterface->unmountPartition(rootMount);
-        Q_EMIT OperationFailed("Failed to mount home partition");
+        emitOperationFailed("Failed to mount home partition");
         return;
     }
     Logger::instance().success("Home partition mounted");
@@ -370,7 +388,7 @@ void NutsHelper::handleRescueOperation() {
 
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        Q_EMIT OperationFailed("Backup file not found at: " + compressedBackup);
+        emitOperationFailed("Backup file not found at: " + compressedBackup);
         return;
     }
     Logger::instance().success("Backup file found");
@@ -379,7 +397,7 @@ void NutsHelper::handleRescueOperation() {
         Logger::instance().warning("Operation cancelled by user");
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        Q_EMIT OperationFailed("Operation cancelled");
+        emitOperationFailed("Operation cancelled");
         return;
     }
 
@@ -391,7 +409,7 @@ void NutsHelper::handleRescueOperation() {
         Logger::instance().error("Backup verification failed");
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        Q_EMIT OperationFailed("Backup verification failed");
+        emitOperationFailed("Backup verification failed");
         return;
     }
     Logger::instance().success("Backup verified successfully");
@@ -400,7 +418,7 @@ void NutsHelper::handleRescueOperation() {
         Logger::instance().warning("Operation cancelled by user");
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        Q_EMIT OperationFailed("Operation cancelled");
+        emitOperationFailed("Operation cancelled");
         return;
     }
 
@@ -413,7 +431,7 @@ void NutsHelper::handleRescueOperation() {
         Logger::instance().error("Failed to decompress backup");
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        Q_EMIT OperationFailed("Failed to decompress backup");
+        emitOperationFailed("Failed to decompress backup");
         return;
     }
     Logger::instance().success("Backup decompressed successfully");
@@ -423,7 +441,7 @@ void NutsHelper::handleRescueOperation() {
         QFile::remove(decompressedBackup);
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        Q_EMIT OperationFailed("Operation cancelled");
+        emitOperationFailed("Operation cancelled");
         return;
     }
 
@@ -436,7 +454,7 @@ void NutsHelper::handleRescueOperation() {
         QFile::remove(decompressedBackup);
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        Q_EMIT OperationFailed("Failed to restore backup");
+        emitOperationFailed("Failed to restore backup");
         return;
     }
     Logger::instance().success("Backup restored successfully");
@@ -450,7 +468,7 @@ void NutsHelper::handleRescueOperation() {
     m_sysInterface->unmountPartition(homeMount);
 
     Logger::instance().success("=== Rescue Operation Completed Successfully ===");
-    Q_EMIT OperationCompleted(true, "System restored successfully");
+    emitOperationCompleted(true, "System restored successfully");
 }
 
 QVariantMap NutsHelper::GetSystemInfo() {

@@ -45,6 +45,8 @@ private:
 
     void emitProgress(OperationStatus status, int percentage,
                      const QString& message, const QString& details = QString());
+    void emitOperationCompleted(bool success, const QString& message);
+    void emitOperationFailed(const QString& error);
 
     void connectSignals();
     bool checkAuthorization(const QString& actionId);
