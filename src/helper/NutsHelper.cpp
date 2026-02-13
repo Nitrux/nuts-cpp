@@ -292,6 +292,12 @@ void NutsHelper::handleRescueOperation() {
     }
     Logger::instance().success("Live session detected");
 
+    if (m_cancelled) {
+        Logger::instance().warning("Operation cancelled by user");
+        Q_EMIT OperationFailed("Operation cancelled");
+        return;
+    }
+
     // Find partitions with absolute path to prevent PATH injection
     Logger::instance().info("Searching for NX_ROOT partition");
     QString output, error;
@@ -331,6 +337,13 @@ void NutsHelper::handleRescueOperation() {
     }
     Logger::instance().success("Root partition mounted");
 
+    if (m_cancelled) {
+        Logger::instance().warning("Operation cancelled by user");
+        m_sysInterface->unmountPartition(rootMount);
+        Q_EMIT OperationFailed("Operation cancelled");
+        return;
+    }
+
     Logger::instance().info("Creating mount point: " + homeMount);
     m_sysInterface->createDirectory(homeMount);
 
@@ -362,6 +375,14 @@ void NutsHelper::handleRescueOperation() {
     }
     Logger::instance().success("Backup file found");
 
+    if (m_cancelled) {
+        Logger::instance().warning("Operation cancelled by user");
+        m_sysInterface->unmountPartition(homeMount);
+        m_sysInterface->unmountPartition(rootMount);
+        Q_EMIT OperationFailed("Operation cancelled");
+        return;
+    }
+
     // Verify backup
     emitProgress(OperationStatus::VerifyingUpdate, 20, "Verifying backup");
     Logger::instance().info("Verifying backup checksum");
@@ -374,6 +395,14 @@ void NutsHelper::handleRescueOperation() {
         return;
     }
     Logger::instance().success("Backup verified successfully");
+
+    if (m_cancelled) {
+        Logger::instance().warning("Operation cancelled by user");
+        m_sysInterface->unmountPartition(homeMount);
+        m_sysInterface->unmountPartition(rootMount);
+        Q_EMIT OperationFailed("Operation cancelled");
+        return;
+    }
 
     // Decompress backup
     emitProgress(OperationStatus::DecompressingBackup, 30, "Decompressing backup");
@@ -388,6 +417,15 @@ void NutsHelper::handleRescueOperation() {
         return;
     }
     Logger::instance().success("Backup decompressed successfully");
+
+    if (m_cancelled) {
+        Logger::instance().warning("Operation cancelled by user");
+        QFile::remove(decompressedBackup);
+        m_sysInterface->unmountPartition(homeMount);
+        m_sysInterface->unmountPartition(rootMount);
+        Q_EMIT OperationFailed("Operation cancelled");
+        return;
+    }
 
     // Restore backup
     emitProgress(OperationStatus::RestoringBackup, 50, "Restoring system");

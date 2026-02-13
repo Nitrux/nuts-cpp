@@ -71,7 +71,9 @@ void NutsClient::performUpdate() {
     }
 
     m_busy = true;
+    m_isRescueOperation = false;
     Q_EMIT busyChanged();
+    Q_EMIT operationTypeChanged();
 
     m_statusMessage = "Starting update...";
     Q_EMIT statusMessageChanged();
@@ -113,7 +115,9 @@ void NutsClient::performRescue() {
     }
 
     m_busy = true;
+    m_isRescueOperation = true;
     Q_EMIT busyChanged();
+    Q_EMIT operationTypeChanged();
 
     m_statusMessage = "Starting rescue...";
     Q_EMIT statusMessageChanged();
@@ -256,7 +260,9 @@ void NutsClient::onProgressChanged(int status, int percentage, const QString& me
 
 void NutsClient::onOperationCompleted(bool success, const QString& message) {
     m_busy = false;
+    m_isRescueOperation = false;
     Q_EMIT busyChanged();
+    Q_EMIT operationTypeChanged();
 
     m_statusMessage = message;
     Q_EMIT statusMessageChanged();
@@ -268,7 +274,9 @@ void NutsClient::onOperationCompleted(bool success, const QString& message) {
 
 void NutsClient::onOperationFailed(const QString& error) {
     m_busy = false;
+    m_isRescueOperation = false;
     Q_EMIT busyChanged();
+    Q_EMIT operationTypeChanged();
 
     m_statusMessage = "Error: " + error;
     Q_EMIT statusMessageChanged();

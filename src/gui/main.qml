@@ -189,7 +189,7 @@ Maui.ApplicationWindow {
             Maui.FlexSectionItem {
                 label1.text: qsTr("Distribution")
                 label2.text: nutsClient.distributionInfo || qsTr("Unknown")
-                visible: nutsClient.distributionInfo !== ""
+                visible: nutsClient.distributionInfo !== "" && !nutsClient.isRescueOperation
             }
 
             Maui.FlexSectionItem {
