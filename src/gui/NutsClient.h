@@ -60,6 +60,7 @@ Q_SIGNALS:
     void updateInfoChanged();
     void isLiveSessionChanged();
     void operationTypeChanged();
+    void noUpdatesAvailable(const QString& message);
 
 private Q_SLOTS:
     void onProgressChanged(int status, int percentage, const QString& message, const QString& details);

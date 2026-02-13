@@ -358,6 +358,11 @@ Maui.ApplicationWindow {
             errorDialog.errorMessage = error
             errorDialog.open()
         }
+        function onNoUpdatesAvailable(message) {
+            completionDialog.success = true
+            completionDialog.dialogMessage = message
+            completionDialog.open()
+        }
     }
 
     Component.onCompleted: {

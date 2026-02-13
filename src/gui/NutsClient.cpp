@@ -188,8 +188,10 @@ void NutsClient::checkForUpdates() {
         QString error = result["error"].toString();
         if (!error.isEmpty()) {
             m_statusMessage = error;
+            Q_EMIT operationFailed(error);
         } else {
             m_statusMessage = "No updates available";
+            Q_EMIT noUpdatesAvailable("Your system is up to date.");
         }
         Q_EMIT updateAvailableChanged();
         Q_EMIT statusMessageChanged();
