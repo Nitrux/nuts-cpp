@@ -189,7 +189,7 @@ Maui.ApplicationWindow {
             Maui.FlexSectionItem {
                 label1.text: qsTr("Distribution")
                 label2.text: nutsClient.distributionInfo || qsTr("Unknown")
-                visible: nutsClient.distributionInfo !== "" && !nutsClient.isRescueOperation
+                visible: false
             }
 
             Maui.FlexSectionItem {
@@ -216,19 +216,6 @@ Maui.ApplicationWindow {
                 visible: text !== ""
             }
 
-            Button {
-                Layout.alignment: Qt.AlignHCenter
-                text: qsTr("Cancel")
-                onClicked: {
-                    if (debugMode && (debugSimulatingUpdate || debugSimulatingRescue)) {
-                        debugSimulatingUpdate = false
-                        debugSimulatingRescue = false
-                        debugTimer.stop()
-                    } else {
-                        nutsClient.cancel()
-                    }
-                }
-            }
         }
 
         Maui.Holder {

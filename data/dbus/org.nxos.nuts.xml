@@ -21,9 +21,6 @@
       <arg direction="out" type="b" name="success"/>
     </method>
 
-    <method name="Cancel">
-    </method>
-
     <!-- Signals -->
     <signal name="ProgressChanged">
       <arg type="i" name="status"/>

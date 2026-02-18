@@ -153,13 +153,6 @@ void NutsClient::performRescue() {
     }
 }
 
-void NutsClient::cancel() {
-    if (!m_connected || !m_busy) {
-        return;
-    }
-
-    m_helperInterface->call("Cancel");
-}
 
 void NutsClient::checkForUpdates() {
     if (!m_connected || m_busy) {

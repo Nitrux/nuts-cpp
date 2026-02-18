@@ -7,7 +7,6 @@
 #include <QObject>
 #include <QDBusContext>
 #include <QDBusVariant>
-#include <QTimer>
 
 namespace Nuts {
 
@@ -26,7 +25,6 @@ public Q_SLOTS:
     QVariantMap GetSystemInfo();
     QVariantMap CheckForUpdates();
     bool CheckConnectivity();
-    void Cancel();
 
 Q_SIGNALS:
     // D-Bus signals
@@ -58,7 +56,6 @@ private:
     BackupManager* m_backupManager{nullptr};
     UpdateManager* m_updateManager{nullptr};
 
-    bool m_cancelled{false};
     OperationType m_currentOperation;
 };
 

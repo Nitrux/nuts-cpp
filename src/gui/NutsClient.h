@@ -44,7 +44,6 @@ public:
 public Q_SLOTS:
     void performUpdate();
     void performRescue();
-    void cancel();
     void refreshSystemInfo();
     void checkForUpdates();
 

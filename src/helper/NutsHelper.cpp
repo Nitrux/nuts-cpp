@@ -173,7 +173,7 @@ bool NutsHelper::PerformUpdate() {
     Logger::instance().info("Starting update operation");
 
     m_currentOperation = OperationType::Update;
-    m_cancelled = false;
+
 
     // Run asynchronously using QtConcurrent to not block D-Bus
     (void)QtConcurrent::run([this]() {
@@ -188,12 +188,12 @@ void NutsHelper::handleUpdateOperation() {
     emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking connectivity");
 
     if (!m_sysInterface->checkInternetConnectivity()) {
-        Q_EMIT OperationFailed("No internet connectivity");
+        emitOperationFailed("No internet connectivity");
         return;
     }
 
     if (!m_sysInterface->checkGitHubConnectivity()) {
-        Q_EMIT OperationFailed("Cannot reach GitHub");
+        emitOperationFailed("Cannot reach GitHub");
         return;
     }
 
@@ -204,34 +204,52 @@ void NutsHelper::handleUpdateOperation() {
     emitProgress(OperationStatus::DownloadingUpdate, 10, "Checking for updates");
 
     if (!m_updateManager->downloadQueryFile(Config::instance().branch())) {
-        Q_EMIT OperationFailed("Failed to download update information");
+        emitOperationFailed("Failed to download update information");
         return;
     }
 
     // Check if update is available
     if (!m_updateManager->isUpdateAvailable(sysInfo.version)) {
-        Q_EMIT OperationCompleted(true, "No update available");
+        emitOperationCompleted(true, "No update available");
         return;
     }
 
     // Create backup
     emitProgress(OperationStatus::CreatingBackup, 15, "Creating system backup");
 
-    QString xfsBackupFile = Config::instance().xfsDir() + "/xfs-backup.xfs";
+    // Ensure required directories exist before attempting backup
+    const QString xfsDir = Config::instance().xfsDir();
+    const QString backupDir = Config::instance().backupDir();
+
+    if (!m_sysInterface->directoryExists(xfsDir)) {
+        if (!m_sysInterface->createSecureDirectory(xfsDir)) {
+            emitOperationFailed("Failed to create XFS directory: " + xfsDir);
+            return;
+        }
+    }
+
+    if (!m_sysInterface->directoryExists(backupDir)) {
+        if (!m_sysInterface->createSecureDirectory(backupDir)) {
+            emitOperationFailed("Failed to create backup directory: " + backupDir);
+            return;
+        }
+    }
+
+    QString xfsBackupFile = xfsDir + "/xfs-backup.xfs";
     QString compressedBackup = xfsBackupFile + ".zst";
 
     if (QFile::exists(compressedBackup)) {
         Logger::instance().info("Backup already exists, skipping");
     } else {
         if (!m_backupManager->createBackup(sysInfo.rootPartition, xfsBackupFile)) {
-            Q_EMIT OperationFailed("Failed to create backup");
+            emitOperationFailed("Failed to create backup");
             return;
         }
 
         emitProgress(OperationStatus::CompressingBackup, 40, "Compressing backup");
 
         if (!m_backupManager->compressBackup(xfsBackupFile, compressedBackup)) {
-            Q_EMIT OperationFailed("Failed to compress backup");
+            emitOperationFailed("Failed to compress backup");
             return;
         }
     }
@@ -240,12 +258,12 @@ void NutsHelper::handleUpdateOperation() {
     emitProgress(OperationStatus::ApplyingUpdate, 60, "Applying update");
 
     if (!m_updateManager->applyUpdate()) {
-        Q_EMIT OperationFailed("Failed to apply update");
+        emitOperationFailed("Failed to apply update");
         return;
     }
 
     // Success
-    Q_EMIT OperationCompleted(true, "Update completed successfully. System will reboot in 30 seconds.");
+    emitOperationCompleted(true, "Update completed successfully. System will reboot in 30 seconds.");
 
     // Schedule reboot
     QThread::sleep(30);
@@ -285,7 +303,7 @@ bool NutsHelper::PerformRescue() {
     Logger::instance().info("Starting rescue operation");
 
     m_currentOperation = OperationType::Rescue;
-    m_cancelled = false;
+
 
     // Run asynchronously using QtConcurrent to not block D-Bus
     Logger::instance().info("Launching rescue operation in background thread");
@@ -309,12 +327,6 @@ void NutsHelper::handleRescueOperation() {
         return;
     }
     Logger::instance().success("Live session detected");
-
-    if (m_cancelled) {
-        Logger::instance().warning("Operation cancelled by user");
-        emitOperationFailed("Operation cancelled");
-        return;
-    }
 
     // Find partitions with absolute path to prevent PATH injection
     Logger::instance().info("Searching for NX_ROOT partition");
@@ -355,13 +367,6 @@ void NutsHelper::handleRescueOperation() {
     }
     Logger::instance().success("Root partition mounted");
 
-    if (m_cancelled) {
-        Logger::instance().warning("Operation cancelled by user");
-        m_sysInterface->unmountPartition(rootMount);
-        emitOperationFailed("Operation cancelled");
-        return;
-    }
-
     Logger::instance().info("Creating mount point: " + homeMount);
     m_sysInterface->createDirectory(homeMount);
 
@@ -393,14 +398,6 @@ void NutsHelper::handleRescueOperation() {
     }
     Logger::instance().success("Backup file found");
 
-    if (m_cancelled) {
-        Logger::instance().warning("Operation cancelled by user");
-        m_sysInterface->unmountPartition(homeMount);
-        m_sysInterface->unmountPartition(rootMount);
-        emitOperationFailed("Operation cancelled");
-        return;
-    }
-
     // Verify backup
     emitProgress(OperationStatus::VerifyingUpdate, 20, "Verifying backup");
     Logger::instance().info("Verifying backup checksum");
@@ -413,14 +410,6 @@ void NutsHelper::handleRescueOperation() {
         return;
     }
     Logger::instance().success("Backup verified successfully");
-
-    if (m_cancelled) {
-        Logger::instance().warning("Operation cancelled by user");
-        m_sysInterface->unmountPartition(homeMount);
-        m_sysInterface->unmountPartition(rootMount);
-        emitOperationFailed("Operation cancelled");
-        return;
-    }
 
     // Decompress backup
     emitProgress(OperationStatus::DecompressingBackup, 30, "Decompressing backup");
@@ -435,15 +424,6 @@ void NutsHelper::handleRescueOperation() {
         return;
     }
     Logger::instance().success("Backup decompressed successfully");
-
-    if (m_cancelled) {
-        Logger::instance().warning("Operation cancelled by user");
-        QFile::remove(decompressedBackup);
-        m_sysInterface->unmountPartition(homeMount);
-        m_sysInterface->unmountPartition(rootMount);
-        emitOperationFailed("Operation cancelled");
-        return;
-    }
 
     // Restore backup
     emitProgress(OperationStatus::RestoringBackup, 50, "Restoring system");
@@ -566,11 +546,6 @@ bool NutsHelper::CheckConnectivity() {
     return internet && github;
 }
 
-void NutsHelper::Cancel() {
-
-    Logger::instance().warning("Operation cancelled by user");
-    m_cancelled = true;
-}
 
 bool NutsHelper::checkAuthorization(const QString& actionId) {
     // Get the D-Bus caller's service name
