@@ -585,9 +585,9 @@ bool UpdateManager::performPackageUpdates() {
 
 bool UpdateManager::runCleanupCrew() {
     QString ccuChecksum = m_queryData.value("NUTS_CCU_CHECKSUM");
-    if (!downloadAndVerifyComponent("nuts-ccu", ccuChecksum)) return false;
+    if (!downloadAndVerifyComponent("nuts-cpp-ccu", ccuChecksum)) return false;
 
-    QString ccuPath = Config::instance().workDir() + "/nuts-ccu";
+    QString ccuPath = Config::instance().workDir() + "/nuts-cpp-ccu";
     QString output, error;
     
     if (!m_sysInterface->executeCommand(ccuPath, {}, output, error)) {
