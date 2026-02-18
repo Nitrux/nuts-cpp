@@ -343,6 +343,11 @@ bool UpdateManager::downloadOTAPayload() {
     for (const auto& mirrorPair : mirrorLatencies) {
         QString url = mirrorPair.first;
 
+        // Remove any partial file from a previous mirror attempt before starting fresh.
+        // Resuming a partial chunk from mirror A against mirror B produces a corrupt
+        // "Frankenstein" file that will never pass checksum verification.
+        QFile::remove(otaPath + ".partial");
+
         if (m_sysInterface->downloadFile(url, otaPath)) {
             if (m_sysInterface->verifyChecksum(otaPath, m_otaChecksum)) {
                 // ADDITIONAL SAFETY: Verify SquashFS integrity with test mount
