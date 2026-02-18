@@ -611,10 +611,12 @@ void UpdateManager::cleanup() {
 }
 
 bool UpdateManager::downloadAndVerifyComponent(const QString& componentName, const QString& expectedChecksum) {
-    QString url = Config::instance().componentBaseUrl() + componentName;
-    if (url.contains("{branch}")) {
-         url.replace("{branch}", Config::instance().branch());
-    }
+    QString baseUrl = Config::instance().componentBaseUrl();
+    if (!baseUrl.endsWith('/'))
+        baseUrl += '/';
+    QString url = baseUrl + componentName;
+    if (url.contains("{branch}"))
+        url.replace("{branch}", Config::instance().branch());
 
     QString workDir = Config::instance().workDir();
     QString tempDest = workDir + "/" + componentName + ".download";

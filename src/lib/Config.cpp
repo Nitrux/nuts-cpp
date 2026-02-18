@@ -79,12 +79,6 @@ bool Config::load(const QString& configPath) {
     m_logFile = logFile;
     m_branch = branch;
 
-    // Load URL settings (with existing defaults)
-    m_queryFileUrlTemplate = settings.value("NUTS_QUERY_URL", m_queryFileUrlTemplate).toString();
-    m_componentBaseUrlTemplate = settings.value("NUTS_COMPONENT_URL", m_componentBaseUrlTemplate).toString();
-    m_osReleaseUrl = settings.value("NUTS_OS_RELEASE_URL", m_osReleaseUrl).toString();
-    m_releaseNotesUrlTemplate = settings.value("NUTS_RELEASE_NOTES_URL", m_releaseNotesUrlTemplate).toString();
-
     return true;
 }
 
