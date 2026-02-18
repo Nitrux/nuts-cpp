@@ -202,7 +202,7 @@ int UpdateManager::compareVersions(const QString& version1, const QString& versi
 // -----------------
 
 bool UpdateManager::applyUpdate() {
-    Logger::instance().info("Starting System Update Process...");
+    Logger::instance().info("=== Starting System Update Process ===");
 
     // Acquire lock file to prevent concurrent update runs.
     // This matches the original nuts shell script behaviour.
@@ -220,6 +220,7 @@ bool UpdateManager::applyUpdate() {
 
     // Check disk space on the host before entering the chroot.
     Q_EMIT updateProgress(5, "Checking disk space");
+    Logger::instance().info("--- Step: Checking disk space ---");
     if (!checkDiskSpace()) {
         Logger::instance().error("Insufficient disk space for update");
         QFile::remove(lockPath);
@@ -230,64 +231,90 @@ bool UpdateManager::applyUpdate() {
 
     // Step 1: Prepare chroot environment.
     Q_EMIT updateProgress(8, "Preparing chroot environment");
+    Logger::instance().info("--- Step: Preparing chroot environment ---");
     {
         QString output, error;
-        m_sysInterface->executeInOverlay({"/usr/bin/mount", "-t", "devtmpfs", "dev", "/dev"}, output, error);
-        // Non-fatal: may already be mounted; proceed regardless.
-        m_sysInterface->executeInOverlay({"/usr/bin/mkdir", "-p", "/tmp"}, output, error);
-        m_sysInterface->executeInOverlay({"/usr/bin/chmod", "1777", "/tmp"}, output, error);
+        bool ok;
+        ok = m_sysInterface->executeInOverlay({"/usr/bin/mount", "-t", "devtmpfs", "dev", "/dev"}, output, error);
+        Logger::instance().debug(QString("mount devtmpfs: %1").arg(ok ? "ok" : "failed (non-fatal, may already be mounted)"));
+        ok = m_sysInterface->executeInOverlay({"/usr/bin/mkdir", "-p", "/tmp"}, output, error);
+        Logger::instance().debug(QString("mkdir /tmp: %1").arg(ok ? "ok" : "failed"));
+        ok = m_sysInterface->executeInOverlay({"/usr/bin/chmod", "1777", "/tmp"}, output, error);
+        Logger::instance().debug(QString("chmod 1777 /tmp: %1").arg(ok ? "ok" : "failed"));
     }
 
     Q_EMIT updateProgress(10, "Mounting partitions");
+    Logger::instance().info("--- Step: Mounting system partitions ---");
     if (!prepareSystemPartitions()) {
+        Logger::instance().error("prepareSystemPartitions() FAILED");
         cleanup();
         QFile::remove(lockPath);
         return false;
     }
+    Logger::instance().success("System partitions ready.");
 
     Q_EMIT updateProgress(15, "Downloading OTA payload");
+    Logger::instance().info("--- Step: Downloading OTA payload ---");
     if (!downloadOTAPayload()) {
+        Logger::instance().error("downloadOTAPayload() FAILED");
         cleanup();
         QFile::remove(lockPath);
         return false;
     }
+    Logger::instance().success("OTA payload ready.");
 
     Q_EMIT updateProgress(25, "Mounting OTA payload");
+    Logger::instance().info("--- Step: Mounting OTA squashfs ---");
     if (!mountOTAPayload()) {
+        Logger::instance().error("mountOTAPayload() FAILED");
         cleanup();
         QFile::remove(lockPath);
         return false;
     }
+    Logger::instance().success("OTA squashfs mounted.");
 
     Q_EMIT updateProgress(30, "Preparing update tools");
+    Logger::instance().info("--- Step: Preparing dpkg tooling ---");
     if (!prepareUpdateTools()) {
+        Logger::instance().error("prepareUpdateTools() FAILED");
         cleanup();
         QFile::remove(lockPath);
         return false;
     }
+    Logger::instance().success("dpkg tooling ready.");
 
     Q_EMIT updateProgress(40, "Syncing package database");
+    Logger::instance().info("--- Step: Syncing package database ---");
     if (!syncPackageData()) {
+        Logger::instance().error("syncPackageData() FAILED");
         cleanup();
         QFile::remove(lockPath);
         return false;
     }
+    Logger::instance().success("Package database synced.");
 
     Q_EMIT updateProgress(50, "Applying packages (this may take time)");
+    Logger::instance().info("--- Step: Applying package updates ---");
     if (!performPackageUpdates()) {
+        Logger::instance().error("performPackageUpdates() FAILED");
         cleanup();
         QFile::remove(lockPath);
         return false;
     }
+    Logger::instance().success("Packages applied.");
 
     Q_EMIT updateProgress(90, "Running final cleanup");
+    Logger::instance().info("--- Step: Running cleanup crew ---");
     if (!runCleanupCrew()) {
+        Logger::instance().error("runCleanupCrew() FAILED");
         cleanup();
         QFile::remove(lockPath);
         return false;
     }
+    Logger::instance().success("Cleanup crew finished.");
 
     // Create nx-pkgmgr-policy symlinks.
+    Logger::instance().info("--- Step: Installing package manager policy symlinks ---");
     {
         QString output, error;
         QStringList aptTools = {"apt", "apt-cache", "apt-cdrom", "apt-config", "apt-get", "apt-mark"};
@@ -306,6 +333,7 @@ bool UpdateManager::applyUpdate() {
         for (const QString& tool : dpkgTools)
             m_sysInterface->executeInOverlay({"/usr/bin/ln", "-sf", "/usr/bin/nx-pkgmgr-policy", "/usr/bin/" + tool}, output, error);
 
+        Logger::instance().info("Flushing writes to disk...");
         // Flush all pending writes to disk before exiting the chroot.
         m_sysInterface->executeInOverlay({"/usr/bin/sync"}, output, error);
     }
@@ -314,7 +342,7 @@ bool UpdateManager::applyUpdate() {
     QFile::remove(lockPath);
 
     Q_EMIT updateProgress(100, "Update completed successfully");
-    Logger::instance().success("System updated successfully.");
+    Logger::instance().success("=== System updated successfully. Please reboot. ===");
     return true;
 }
 
@@ -327,28 +355,39 @@ bool UpdateManager::prepareSystemPartitions() {
     QString output, error;
 
     // Resolve and mount NX_HOME → /home
+    Logger::instance().debug("Resolving LABEL=NX_HOME...");
     if (!m_sysInterface->executeInOverlay({"/usr/sbin/findfs", "LABEL=NX_HOME"}, output, error)) {
         Logger::instance().error("Could not find partition labeled NX_HOME");
+        if (!error.trimmed().isEmpty()) Logger::instance().error("findfs NX_HOME stderr: " + error.trimmed());
         return false;
     }
     QString homeDev = output.trimmed();
+    Logger::instance().info("NX_HOME device: " + homeDev);
 
-    m_sysInterface->executeInOverlay({"/usr/bin/mount", "-t", "auto", homeDev, "/home"}, output, error);
-    // Non-fatal if already mounted; proceed.
+    bool mountOk = m_sysInterface->executeInOverlay({"/usr/bin/mount", "-t", "auto", homeDev, "/home"}, output, error);
+    Logger::instance().debug(QString("mount %1 /home: %2").arg(homeDev, mountOk ? "ok" : "failed (may already be mounted)"));
+    if (!mountOk && !error.trimmed().isEmpty())
+        Logger::instance().debug("mount /home stderr: " + error.trimmed());
 
     // Resolve and mount NX_VAR_LIB → /var/lib
+    Logger::instance().debug("Resolving LABEL=NX_VAR_LIB...");
     if (!m_sysInterface->executeInOverlay({"/usr/sbin/findfs", "LABEL=NX_VAR_LIB"}, output, error)) {
         Logger::instance().error("Could not find partition labeled NX_VAR_LIB");
+        if (!error.trimmed().isEmpty()) Logger::instance().error("findfs NX_VAR_LIB stderr: " + error.trimmed());
         return false;
     }
     QString varLibDev = output.trimmed();
+    Logger::instance().info("NX_VAR_LIB device: " + varLibDev);
 
-    m_sysInterface->executeInOverlay({"/usr/bin/mount", "-t", "auto", varLibDev, "/var/lib"}, output, error);
-    // Non-fatal if already mounted.
+    mountOk = m_sysInterface->executeInOverlay({"/usr/bin/mount", "-t", "auto", varLibDev, "/var/lib"}, output, error);
+    Logger::instance().debug(QString("mount %1 /var/lib: %2").arg(varLibDev, mountOk ? "ok" : "failed (may already be mounted)"));
+    if (!mountOk && !error.trimmed().isEmpty())
+        Logger::instance().debug("mount /var/lib stderr: " + error.trimmed());
 
     // Create working directories inside the chroot
     m_sysInterface->executeInOverlay({"/usr/bin/mkdir", "-p", Config::instance().downloadDir()}, output, error);
     m_sysInterface->executeInOverlay({"/usr/bin/mkdir", "-p", Config::instance().squashfsDir()}, output, error);
+    Logger::instance().debug("Working dirs: " + Config::instance().downloadDir() + ", " + Config::instance().squashfsDir());
 
     return true;
 }
@@ -358,17 +397,24 @@ bool UpdateManager::downloadOTAPayload() {
     QString otaPath = Config::instance().downloadDir() + "/nuts-ota.squashfs";
     QString output, error;
 
+    Logger::instance().info("OTA target path: " + otaPath);
+    Logger::instance().info("OTA expected checksum: " + m_otaChecksum);
+    Logger::instance().info("Mirrors available: " + QString::number(m_mirrorList.size()));
+
     // Check if a valid file already exists in the lower layer
     if (m_sysInterface->executeInOverlay({"/usr/bin/test", "-f", otaPath}, output, error)) {
+        Logger::instance().info("Existing OTA file found, verifying checksum...");
         if (m_sysInterface->executeInOverlay(
                 {"/bin/sh", "-c",
                  QString("[ \"$(sha256sum '%1' | awk '{print $1}')\" = \"%2\" ]").arg(otaPath, m_otaChecksum)},
                 output, error)) {
-            Logger::instance().success("Existing OTA payload verified.");
+            Logger::instance().success("Existing OTA payload verified, skipping download.");
             return true;
         }
-        Logger::instance().warning("Existing OTA payload corrupt. Re-downloading.");
+        Logger::instance().warning("Existing OTA payload checksum mismatch. Re-downloading.");
         m_sysInterface->executeInOverlay({"/usr/bin/rm", "-f", otaPath}, output, error);
+    } else {
+        Logger::instance().info("No existing OTA file found at " + otaPath);
     }
 
     if (m_mirrorList.isEmpty()) {
@@ -383,15 +429,17 @@ bool UpdateManager::downloadOTAPayload() {
         // Always start clean — never resume across mirrors
         m_sysInterface->executeInOverlay({"/usr/bin/rm", "-f", otaPath}, output, error);
 
-        Logger::instance().info("Trying mirror: " + QUrl(url).host());
+        Logger::instance().info("Trying mirror: " + url);
         bool ok = m_sysInterface->executeInOverlay(
             {"/usr/bin/axel", "-n", "10", "-o", otaPath, url},
             output, error);
 
         if (!ok) {
-            Logger::instance().warning("Download from " + QUrl(url).host() + " failed. Trying next mirror.");
+            Logger::instance().warning("Download from " + url + " failed.");
+            if (!error.trimmed().isEmpty()) Logger::instance().warning("axel stderr: " + error.trimmed());
             continue;
         }
+        Logger::instance().debug("axel download complete, verifying checksum...");
 
         // Verify checksum inside the chroot
         bool checksumOk = m_sysInterface->executeInOverlay(
@@ -400,11 +448,18 @@ bool UpdateManager::downloadOTAPayload() {
             output, error);
 
         if (checksumOk) {
-            Logger::instance().success("OTA payload downloaded and verified from " + QUrl(url).host());
+            Logger::instance().success("OTA payload downloaded and verified from " + url);
             return true;
         }
 
-        Logger::instance().warning("Checksum mismatch from " + QUrl(url).host() + ". Trying next mirror.");
+        // Log what the actual checksum was for comparison
+        QString actualSum, sumErr;
+        m_sysInterface->executeInOverlay(
+            {"/bin/sh", "-c", QString("sha256sum '%1' | awk '{print $1}'").arg(otaPath)},
+            actualSum, sumErr);
+        Logger::instance().warning("Checksum mismatch from " + url);
+        Logger::instance().warning("  Expected: " + m_otaChecksum);
+        Logger::instance().warning("  Got:      " + actualSum.trimmed());
         m_sysInterface->executeInOverlay({"/usr/bin/rm", "-f", otaPath}, output, error);
     }
 
@@ -417,10 +472,15 @@ bool UpdateManager::mountOTAPayload() {
     QString mountPoint = Config::instance().squashfsDir();
     QString output, error;
 
+    Logger::instance().info("Mounting: " + otaPath + " -> " + mountPoint);
     if (!m_sysInterface->executeInOverlay({"/usr/bin/mount", otaPath, mountPoint}, output, error)) {
-        Logger::instance().error("Failed to mount OTA squashfs: " + error);
+        Logger::instance().error("Failed to mount OTA squashfs");
+        if (!error.trimmed().isEmpty()) Logger::instance().error("mount stderr: " + error.trimmed());
         return false;
     }
+    // List top-level contents for verification
+    m_sysInterface->executeInOverlay({"/usr/bin/ls", mountPoint}, output, error);
+    Logger::instance().debug("OTA squashfs root contents: " + output.trimmed());
     return true;
 }
 
@@ -433,47 +493,82 @@ bool UpdateManager::prepareUpdateTools() {
     QString appImageUrl = "https://raw.githubusercontent.com/Nitrux/storage/master/Other/AppImages/dpkg-1.22.21-x86_64.AppImage";
     QString expectedChecksum = m_queryData.value("DPKG_AI_SUM");
 
+    Logger::instance().info("dpkg AppImage path: " + appImagePath);
+    Logger::instance().info("dpkg AppRun path:   " + appRunPath);
+    Logger::instance().info("Expected DPKG_AI_SUM: " + expectedChecksum);
+
     // Check if already extracted (test inside chroot)
     QString output, error;
     bool alreadyExtracted = m_sysInterface->executeInOverlay(
         {"/usr/bin/test", "-f", appRunPath}, output, error);
 
-    if (!alreadyExtracted) {
+    if (alreadyExtracted) {
+        Logger::instance().info("Extracted OTA tooling already present, skipping download.");
+    } else {
+        Logger::instance().info("OTA tooling not found, downloading...");
+
         // 1. Download AppImage inside chroot using axel
-        Logger::instance().info("Downloading dpkg AppImage tooling...");
         if (!m_sysInterface->executeInOverlay(
                 {"/usr/bin/axel", "-n", "10", "-o", appImagePath, appImageUrl}, output, error)) {
-            Logger::instance().error("Failed to download OTA tooling: " + error);
+            Logger::instance().error("Failed to download OTA tooling");
+            if (!error.trimmed().isEmpty()) Logger::instance().error("axel stderr: " + error.trimmed());
             return false;
         }
+        Logger::instance().success("dpkg AppImage downloaded.");
 
         // 2. Verify checksum inside chroot
-        Logger::instance().info("Verifying update tools integrity...");
+        Logger::instance().info("Verifying dpkg AppImage checksum...");
         QString checksumCmd = QString("echo '%1  %2' | /usr/bin/sha256sum -c -")
                                   .arg(expectedChecksum, appImagePath);
         if (!m_sysInterface->executeInOverlay({"/bin/sh", "-c", checksumCmd}, output, error)) {
-            Logger::instance().error("CRITICAL: OTA tooling checksum mismatch! Aborting.");
+            Logger::instance().error("CRITICAL: dpkg AppImage checksum mismatch!");
+            // Log actual checksum for diagnosis
+            QString actualSum, sumErr;
+            m_sysInterface->executeInOverlay(
+                {"/bin/sh", "-c", QString("sha256sum '%1' | awk '{print $1}'").arg(appImagePath)},
+                actualSum, sumErr);
+            Logger::instance().error("  Expected: " + expectedChecksum);
+            Logger::instance().error("  Got:      " + actualSum.trimmed());
             m_sysInterface->executeInOverlay({"/usr/bin/rm", "-f", appImagePath}, output, error);
             return false;
         }
+        Logger::instance().success("dpkg AppImage checksum OK.");
 
         // 3. Make executable inside chroot
         m_sysInterface->executeInOverlay({"/usr/bin/chmod", "+x", appImagePath}, output, error);
 
         // 4. Extract inside chroot
+        Logger::instance().info("Extracting dpkg AppImage...");
         m_sysInterface->executeInOverlay({"/usr/bin/rm", "-rf", extractDir}, output, error);
         m_sysInterface->executeInOverlay({"/usr/bin/mkdir", "-p", extractDir}, output, error);
         if (!m_sysInterface->executeInOverlay(
                 {"/bin/sh", "-c", "cd " + extractDir + " && " + appImagePath + " --appimage-extract"},
                 output, error)) {
-            Logger::instance().error("Failed to extract OTA tooling: " + error);
+            Logger::instance().error("Failed to extract dpkg AppImage");
+            if (!error.trimmed().isEmpty()) Logger::instance().error("extract stderr: " + error.trimmed());
             return false;
         }
+
+        // Verify AppRun exists after extraction
+        bool appRunExists = m_sysInterface->executeInOverlay(
+            {"/usr/bin/test", "-f", appRunPath}, output, error);
+        if (!appRunExists) {
+            Logger::instance().error("Extraction completed but AppRun not found at: " + appRunPath);
+            // List what IS there to help diagnose
+            m_sysInterface->executeInOverlay({"/usr/bin/ls", "-la", extractDir + "/squashfs-root/"}, output, error);
+            Logger::instance().debug("squashfs-root contents: " + output.trimmed());
+            return false;
+        }
+        Logger::instance().success("dpkg AppImage extracted. AppRun found.");
     }
 
     m_pkgManagerPath = appRunPath;
+    Logger::instance().info("Using package manager: " + m_pkgManagerPath);
 
-    m_sysInterface->executeInOverlay({"/usr/bin/ln", "-svf", appRunPath, "/usr/bin/dpkg"}, output, error);
+    // dpkg → AppRun (matching original: ln -svf "$AIPKG_MANAGER" /usr/bin/dpkg)
+    bool lnOk = m_sysInterface->executeInOverlay({"/usr/bin/ln", "-svf", appRunPath, "/usr/bin/dpkg"}, output, error);
+    Logger::instance().debug(QString("ln dpkg -> AppRun: %1").arg(lnOk ? "ok" : "failed"));
+    if (!lnOk && !error.trimmed().isEmpty()) Logger::instance().debug("ln stderr: " + error.trimmed());
 
     QStringList tools = {"dpkg-deb", "dpkg-divert", "dpkg-query",
                          "dpkg-realpath", "dpkg-split", "dpkg-statoverride",
@@ -487,11 +582,15 @@ bool UpdateManager::prepareUpdateTools() {
         QString testOut, testErr;
         if (m_sysInterface->executeInOverlay({"/usr/bin/test", "-f", target}, testOut, testErr)) {
             m_sysInterface->executeInOverlay({"/usr/bin/ln", "-svf", target, link}, output, error);
+            Logger::instance().debug("Linked: " + link + " -> " + target);
+        } else {
+            Logger::instance().warning("Tool binary not found in AppImage, skipping: " + target);
         }
     }
 
     m_sysInterface->executeInOverlay({"/usr/bin/mkdir", "-p", "/usr/share"}, output, error);
-    m_sysInterface->executeInOverlay({"/usr/bin/ln", "-svf", extractDir + "/squashfs-root/usr/share/dpkg", "/usr/share/dpkg"}, output, error);
+    bool shareOk = m_sysInterface->executeInOverlay({"/usr/bin/ln", "-svf", extractDir + "/squashfs-root/usr/share/dpkg", "/usr/share/dpkg"}, output, error);
+    Logger::instance().debug(QString("ln /usr/share/dpkg: %1").arg(shareOk ? "ok" : "failed (non-fatal)"));
 
     return true;
 }
@@ -502,40 +601,59 @@ bool UpdateManager::syncPackageData() {
     QString expectedChecksum = m_queryData.value("VAR_LIB_SUM");
     QString output, error;
 
+    Logger::instance().info("Package DB archive URL: " + url);
+    Logger::instance().info("Package DB archive path: " + tarPath);
+    Logger::instance().info("Expected VAR_LIB_SUM: " + expectedChecksum);
+
     // Remove any stale file first
     m_sysInterface->executeInOverlay({"/usr/bin/rm", "-f", tarPath}, output, error);
 
     Logger::instance().info("Downloading package database archive...");
     if (!m_sysInterface->executeInOverlay(
             {"/usr/bin/axel", "-n", "10", "-o", tarPath, url}, output, error)) {
-        Logger::instance().error("Failed to download package database: " + error);
+        Logger::instance().error("Failed to download package database archive");
+        if (!error.trimmed().isEmpty()) Logger::instance().error("axel stderr: " + error.trimmed());
         return false;
     }
+    Logger::instance().success("Package database archive downloaded.");
 
     // Verify checksum inside chroot before extraction.
     // Extracting an unverified archive to / is extremely dangerous (zip slip / overwrite attacks).
-    Logger::instance().info("Verifying package database archive...");
+    Logger::instance().info("Verifying package database archive checksum...");
     QString checksumCmd = QString("echo '%1  %2' | /usr/bin/sha256sum -c -")
                               .arg(expectedChecksum, tarPath);
     if (!m_sysInterface->executeInOverlay({"/bin/sh", "-c", checksumCmd}, output, error)) {
         Logger::instance().error("CRITICAL: Package database checksum mismatch!");
+        QString actualSum, sumErr;
+        m_sysInterface->executeInOverlay(
+            {"/bin/sh", "-c", QString("sha256sum '%1' | awk '{print $1}'").arg(tarPath)},
+            actualSum, sumErr);
+        Logger::instance().error("  Expected: " + expectedChecksum);
+        Logger::instance().error("  Got:      " + actualSum.trimmed());
         m_sysInterface->executeInOverlay({"/usr/bin/rm", "-f", tarPath}, output, error);
         return false;
     }
+    Logger::instance().success("Package database archive checksum OK.");
 
     // Extract into the lower layer — original uses: cd / && tar -xf $TARFILE
+    Logger::instance().info("Extracting package database archive to /...");
     if (!m_sysInterface->executeInOverlay(
             {"/bin/sh", "-c", "mkdir -p /var/lib/dpkg && cd / && /usr/bin/tar -xf " + tarPath},
             output, error)) {
-        Logger::instance().error("Failed to extract package database: " + error);
+        Logger::instance().error("Failed to extract package database archive");
+        if (!error.trimmed().isEmpty()) Logger::instance().error("tar stderr: " + error.trimmed());
         return false;
     }
 
     // Confirm extraction succeeded.
     if (!m_sysInterface->executeInOverlay({"/usr/bin/test", "-f", "/var/lib/dpkg/status"}, output, error)) {
         Logger::instance().error("Package database extraction failed: /var/lib/dpkg/status not found");
+        // List /var/lib/dpkg to see what is there
+        m_sysInterface->executeInOverlay({"/usr/bin/ls", "-la", "/var/lib/dpkg/"}, output, error);
+        Logger::instance().debug("/var/lib/dpkg/ contents: " + output.trimmed());
         return false;
     }
+    Logger::instance().success("Package database extracted. /var/lib/dpkg/status confirmed.");
 
     return true;
 }
@@ -545,6 +663,9 @@ bool UpdateManager::performPackageUpdates() {
     QString updatesDir = otaDir + "/updates";
     QString nvidiaDir = otaDir + "/nvidia";
 
+    Logger::instance().info("OTA updates dir: " + updatesDir);
+    Logger::instance().info("dpkg manager path: " + m_pkgManagerPath);
+
     // Detect NVIDIA on the host via /proc (shared with chroot).
     bool isNvidia = QDir("/proc/driver/nvidia").exists();
     if (!isNvidia) {
@@ -552,8 +673,21 @@ bool UpdateManager::performPackageUpdates() {
         m_sysInterface->executeCommand("/usr/bin/lspci", {}, output, error);
         if (output.contains("NVIDIA", Qt::CaseInsensitive)) isNvidia = true;
     }
-    if (isNvidia)
-        Logger::instance().info("NVIDIA hardware detected. Including NVIDIA drivers.");
+    Logger::instance().info(QString("NVIDIA hardware: %1").arg(isNvidia ? "yes" : "no"));
+
+    // Verify the updates directory exists and list its contents
+    {
+        QString output, error;
+        bool dirExists = m_sysInterface->executeInOverlay(
+            {"/usr/bin/test", "-d", updatesDir}, output, error);
+        Logger::instance().info(QString("Updates dir exists: %1").arg(dirExists ? "yes" : "NO - this is a problem"));
+        if (dirExists) {
+            m_sysInterface->executeInOverlay({"/usr/bin/find", updatesDir, "-name", "*.deb"}, output, error);
+            Logger::instance().debug("Debs found:\n" + output.trimmed());
+            if (output.trimmed().isEmpty())
+                Logger::instance().warning("No .deb files found in " + updatesDir);
+        }
+    }
 
     // Phase 1: Unpack.
     Logger::instance().info("Phase 1: Unpacking OTA content...");
@@ -569,15 +703,21 @@ bool UpdateManager::performPackageUpdates() {
             "xargs -0 -n 120 %2 --force-all --unpack"
         ).arg(searchPaths, m_pkgManagerPath);
 
+        Logger::instance().debug("Unpack command: " + unpackCmd);
+
         QString output, error;
-        if (!m_sysInterface->executeInOverlay({"/bin/sh", "-c", unpackCmd}, output, error)) {
-            Logger::instance().error("Failed to unpack OTA content: " + error);
+        bool ok = m_sysInterface->executeInOverlay({"/bin/sh", "-c", unpackCmd}, output, error);
+        if (!output.trimmed().isEmpty()) Logger::instance().debug("unpack stdout: " + output.trimmed());
+        if (!error.trimmed().isEmpty())  Logger::instance().debug("unpack stderr: " + error.trimmed());
+        if (!ok) {
+            Logger::instance().error("Failed to unpack OTA content (exit non-zero)");
             return false;
         }
+        Logger::instance().success("Phase 1 unpack complete.");
     }
 
-    // Phase 2: Configure loop audit reports clean.
-    Logger::instance().info("Configuring packages...");
+    // Phase 2: Configure loop until audit reports clean.
+    Logger::instance().info("Phase 2: Configuring packages...");
     int maxPasses = 15;
     int pass = 1;
     QString lastAudit;
@@ -590,23 +730,29 @@ bool UpdateManager::performPackageUpdates() {
         confArgs << "/bin/sh" << "-c"
                  << QString("export DEBIAN_FRONTEND=noninteractive && export TMPDIR=/tmp && "
                             "%1 --force-all --configure -a").arg(m_pkgManagerPath);
-        m_sysInterface->executeInOverlay(confArgs, output, error);
+        bool confOk = m_sysInterface->executeInOverlay(confArgs, output, error);
+        if (!output.trimmed().isEmpty()) Logger::instance().debug("configure stdout: " + output.trimmed());
+        if (!error.trimmed().isEmpty())  Logger::instance().debug("configure stderr: " + error.trimmed());
+        Logger::instance().debug(QString("configure exit: %1").arg(confOk ? "0" : "non-zero (expected, --force-all)"));
 
         QStringList auditArgs;
         auditArgs << m_pkgManagerPath << "--audit";
         m_sysInterface->executeInOverlay(auditArgs, output, error);
         QString currentAudit = output.trimmed();
 
+        if (!currentAudit.isEmpty())
+            Logger::instance().info("dpkg --audit output:\n" + currentAudit);
+
         if (currentAudit.isEmpty()) {
-            Logger::instance().success("Package configuration converged.");
+            Logger::instance().success("Package configuration converged after " + QString::number(pass) + " pass(es).");
             m_sysInterface->executeInOverlay({"/usr/bin/rm", "-rf", "/tmp/pkgman-extracted"}, output, error);
             return true;
         }
 
         if (currentAudit == lastAudit && pass > 1) {
-             Logger::instance().error("Package configuration stuck (no progress). Aborting.");
-             Logger::instance().error("Audit output: " + currentAudit);
-             return false;
+            Logger::instance().error("Package configuration stuck — no progress between passes. Aborting.");
+            Logger::instance().error("Final dpkg --audit:\n" + currentAudit);
+            return false;
         }
 
         lastAudit = currentAudit;
@@ -614,7 +760,8 @@ bool UpdateManager::performPackageUpdates() {
         QThread::sleep(1);
     }
 
-    Logger::instance().error("Package configuration failed to converge.");
+    Logger::instance().error(QString("Package configuration failed to converge after %1 passes.").arg(maxPasses));
+    Logger::instance().error("Final dpkg --audit:\n" + lastAudit);
     return false;
 }
 
@@ -628,40 +775,69 @@ bool UpdateManager::runCleanupCrew() {
     if (!baseUrl.endsWith('/')) baseUrl += '/';
     QString ccuUrl = baseUrl + "nuts-cpp-ccu";
 
+    Logger::instance().info("CCU URL:  " + ccuUrl);
+    Logger::instance().info("CCU path: " + ccuPath);
+    Logger::instance().info("Expected NUTS_CCU_CHECKSUM: " + ccuChecksum);
+
     // Download inside chroot using axel
     Logger::instance().info("Downloading cleanup crew...");
     if (!m_sysInterface->executeInOverlay(
             {"/usr/bin/axel", "-n", "10", "-o", ccuPath, ccuUrl}, output, error)) {
-        Logger::instance().error("Failed to download cleanup crew: " + error);
+        Logger::instance().error("Failed to download cleanup crew");
+        if (!error.trimmed().isEmpty()) Logger::instance().error("axel stderr: " + error.trimmed());
         return false;
     }
+    Logger::instance().success("Cleanup crew downloaded.");
 
     // Verify checksum inside chroot
+    Logger::instance().info("Verifying cleanup crew checksum...");
     QString checksumCmd = QString("echo '%1  %2' | /usr/bin/sha256sum -c -")
                               .arg(ccuChecksum, ccuPath);
     if (!m_sysInterface->executeInOverlay({"/bin/sh", "-c", checksumCmd}, output, error)) {
-        Logger::instance().error("CRITICAL: Cleanup crew checksum mismatch! Aborting.");
+        Logger::instance().error("CRITICAL: Cleanup crew checksum mismatch!");
+        QString actualSum, sumErr;
+        m_sysInterface->executeInOverlay(
+            {"/bin/sh", "-c", QString("sha256sum '%1' | awk '{print $1}'").arg(ccuPath)},
+            actualSum, sumErr);
+        Logger::instance().error("  Expected: " + ccuChecksum);
+        Logger::instance().error("  Got:      " + actualSum.trimmed());
         m_sysInterface->executeInOverlay({"/usr/bin/rm", "-f", ccuPath}, output, error);
         return false;
     }
+    Logger::instance().success("Cleanup crew checksum OK.");
 
     // Make executable and run inside chroot
     m_sysInterface->executeInOverlay({"/usr/bin/chmod", "+x", ccuPath}, output, error);
-    if (!m_sysInterface->executeInOverlay({ccuPath}, output, error)) {
-        Logger::instance().error("Cleanup script failed: " + error);
+    Logger::instance().info("Running cleanup crew...");
+    bool ok = m_sysInterface->executeInOverlay({ccuPath}, output, error);
+    if (!output.trimmed().isEmpty()) Logger::instance().info("CCU stdout: " + output.trimmed());
+    if (!error.trimmed().isEmpty())  Logger::instance().info("CCU stderr: " + error.trimmed());
+    if (!ok) {
+        Logger::instance().error("Cleanup crew script exited with non-zero status");
         return false;
     }
+    Logger::instance().success("Cleanup crew completed successfully.");
     return true;
 }
 
 void UpdateManager::cleanup() {
+    Logger::instance().info("--- Cleanup: unmounting chroot mounts ---");
     QString output, error;
 
     // Unmount inside chroot — mounts were created inside the chroot.
-    m_sysInterface->executeInOverlay({"/usr/bin/umount", Config::instance().squashfsDir()}, output, error);
-    m_sysInterface->executeInOverlay({"/usr/bin/umount", "/home"}, output, error);
-    m_sysInterface->executeInOverlay({"/usr/bin/umount", "/var/lib"}, output, error);
-    m_sysInterface->executeInOverlay({"/usr/bin/umount", "/dev"}, output, error);
+    QString sqfsDir = Config::instance().squashfsDir();
+    bool ok;
+    ok = m_sysInterface->executeInOverlay({"/usr/bin/umount", sqfsDir}, output, error);
+    Logger::instance().debug(QString("umount %1: %2").arg(sqfsDir, ok ? "ok" : "failed (may not be mounted)"));
+
+    ok = m_sysInterface->executeInOverlay({"/usr/bin/umount", "/home"}, output, error);
+    Logger::instance().debug(QString("umount /home: %1").arg(ok ? "ok" : "failed (may not be mounted)"));
+
+    ok = m_sysInterface->executeInOverlay({"/usr/bin/umount", "/var/lib"}, output, error);
+    Logger::instance().debug(QString("umount /var/lib: %1").arg(ok ? "ok" : "failed (may not be mounted)"));
+
+    ok = m_sysInterface->executeInOverlay({"/usr/bin/umount", "/dev"}, output, error);
+    Logger::instance().debug(QString("umount /dev: %1").arg(ok ? "ok" : "failed (may not be mounted)"));
 }
 
 

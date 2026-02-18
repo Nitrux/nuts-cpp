@@ -59,6 +59,7 @@ struct BackupInfo {
 };
 
 enum class LogLevel {
+    Debug,
     Info,
     Success,
     Warning,

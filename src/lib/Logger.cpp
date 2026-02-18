@@ -41,6 +41,7 @@ void Logger::openLogFile() {
 
 QString Logger::levelToString(LogLevel level) const {
     switch (level) {
+        case LogLevel::Debug: return "Debug";
         case LogLevel::Info: return "Info";
         case LogLevel::Success: return "Success";
         case LogLevel::Warning: return "Warning";
@@ -51,6 +52,7 @@ QString Logger::levelToString(LogLevel level) const {
 
 QString Logger::levelToColor(LogLevel level) const {
     switch (level) {
+        case LogLevel::Debug: return "\033[36m";     // Cyan
         case LogLevel::Info: return "\033[34m";      // Blue
         case LogLevel::Success: return "\033[32m";   // Green
         case LogLevel::Warning: return "\033[33m";   // Yellow

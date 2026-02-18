@@ -22,6 +22,7 @@ public:
     void setLogFile(const QString& path);
     void log(LogLevel level, const QString& message);
 
+    void debug(const QString& message) { log(LogLevel::Debug, message); }
     void info(const QString& message) { log(LogLevel::Info, message); }
     void success(const QString& message) { log(LogLevel::Success, message); }
     void warning(const QString& message) { log(LogLevel::Warning, message); }

@@ -25,19 +25,31 @@ SystemInterface::SystemInterface(QObject* parent)
 
 bool SystemInterface::executeCommand(const QString& program, const QStringList& arguments,
                                      QString& output, QString& error, int timeout) {
+    // Log the full command being run for troubleshooting
+    QString cmdLine = program + (arguments.isEmpty() ? QString() : " " + arguments.join(' '));
+    Logger::instance().debug("EXEC: " + cmdLine);
+
     QProcess process;
     process.start(program, arguments);
 
     if (!process.waitForFinished(timeout)) {
         error = "Command timed out";
         process.kill();
+        Logger::instance().debug("EXEC TIMEOUT: " + cmdLine);
         return false;
     }
 
     output = QString::fromUtf8(process.readAllStandardOutput());
     error = QString::fromUtf8(process.readAllStandardError());
 
-    return process.exitCode() == 0;
+    int exitCode = process.exitCode();
+    if (!output.trimmed().isEmpty())
+        Logger::instance().debug("STDOUT: " + output.trimmed());
+    if (!error.trimmed().isEmpty())
+        Logger::instance().debug("STDERR: " + error.trimmed());
+    Logger::instance().debug(QString("EXIT(%1): %2").arg(exitCode).arg(cmdLine));
+
+    return exitCode == 0;
 }
 
 SystemInfo SystemInterface::getSystemInfo() {
