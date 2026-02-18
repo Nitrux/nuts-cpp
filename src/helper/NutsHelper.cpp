@@ -544,6 +544,7 @@ QVariantMap NutsHelper::CheckForUpdates() {
             urlVersion.replace(" ", "-");
 
             QString releaseNotesUrl = Config::instance().releaseNotesUrl();
+            releaseNotesUrl.replace("{branch}", Config::instance().branch());
             releaseNotesUrl.replace("{version}", urlVersion);
             result["releaseNotesUrl"] = releaseNotesUrl;
         }
