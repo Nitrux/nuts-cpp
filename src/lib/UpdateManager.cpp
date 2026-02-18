@@ -6,8 +6,8 @@
 #include <QFileInfo>
 #include <QSettings>
 #include <QDir>
-#include <QThread>
 #include <QUrl>
+#include <QThread>
 #include <algorithm>
 #include <climits>
 
@@ -205,7 +205,7 @@ bool UpdateManager::applyUpdate() {
     Logger::instance().info("=== Starting System Update Process ===");
 
     // Acquire lock file to prevent concurrent update runs.
-    // This matches the original nuts shell script behaviour.
+    // This matches the original nuts behaviour.
     const QString lockPath = "/var/run/nuts-cpp.lock";
     QFile lockFile(lockPath);
     if (lockFile.exists()) {
@@ -314,7 +314,7 @@ bool UpdateManager::applyUpdate() {
     Logger::instance().success("Cleanup crew finished.");
 
     // Create nx-pkgmgr-policy symlinks.
-    Logger::instance().info("--- Step: Installing package manager policy symlinks ---");
+    Logger::instance().info("--- Step: Installing policy symlinks ---");
     {
         QString output, error;
         QStringList aptTools = {"apt", "apt-cache", "apt-cdrom", "apt-config", "apt-get", "apt-mark"};
@@ -563,7 +563,7 @@ bool UpdateManager::prepareUpdateTools() {
     }
 
     m_pkgManagerPath = appRunPath;
-    Logger::instance().info("Using package manager: " + m_pkgManagerPath);
+    Logger::instance().info("Using dpkg tooling at: " + m_pkgManagerPath);
 
     // dpkg → AppRun (matching original: ln -svf "$AIPKG_MANAGER" /usr/bin/dpkg)
     bool lnOk = m_sysInterface->executeInOverlay({"/usr/bin/ln", "-svf", appRunPath, "/usr/bin/dpkg"}, output, error);
@@ -664,7 +664,7 @@ bool UpdateManager::performPackageUpdates() {
     QString nvidiaDir = otaDir + "/nvidia";
 
     Logger::instance().info("OTA updates dir: " + updatesDir);
-    Logger::instance().info("dpkg manager path: " + m_pkgManagerPath);
+    Logger::instance().info("dpkg tooling path: " + m_pkgManagerPath);
 
     // Detect NVIDIA on the host via /proc (shared with chroot).
     bool isNvidia = QDir("/proc/driver/nvidia").exists();
@@ -675,94 +675,105 @@ bool UpdateManager::performPackageUpdates() {
     }
     Logger::instance().info(QString("NVIDIA hardware: %1").arg(isNvidia ? "yes" : "no"));
 
-    // Verify the updates directory exists and list its contents
-    {
-        QString output, error;
-        bool dirExists = m_sysInterface->executeInOverlay(
-            {"/usr/bin/test", "-d", updatesDir}, output, error);
-        Logger::instance().info(QString("Updates dir exists: %1").arg(dirExists ? "yes" : "NO - this is a problem"));
-        if (dirExists) {
-            m_sysInterface->executeInOverlay({"/usr/bin/find", updatesDir, "-name", "*.deb"}, output, error);
-            Logger::instance().debug("Debs found:\n" + output.trimmed());
-            if (output.trimmed().isEmpty())
-                Logger::instance().warning("No .deb files found in " + updatesDir);
-        }
+    QString output, error;
+
+    // Verify the dpkg tooling is present inside the chroot before attempting anything.
+    if (!m_sysInterface->executeInOverlay({"/usr/bin/test", "-f", m_pkgManagerPath}, output, error)) {
+        Logger::instance().error("dpkg tooling not found inside chroot: " + m_pkgManagerPath);
+        return false;
+    }
+    Logger::instance().info("dpkg tooling confirmed present: " + m_pkgManagerPath);
+
+    // --- Phase 1: Collect .deb paths ---
+    Logger::instance().info("--- Phase 1: Collecting .deb packages ---");
+
+    QStringList findArgs = {"/usr/bin/find", updatesDir, "-name", "*.deb", "-print0"};
+    if (isNvidia)
+        findArgs << nvidiaDir;
+
+    bool findOk = m_sysInterface->executeInOverlay(findArgs, output, error);
+    if (!findOk && output.trimmed().isEmpty()) {
+        Logger::instance().error("find failed to enumerate .deb packages");
+        if (!error.trimmed().isEmpty()) Logger::instance().error("find stderr: " + error.trimmed());
+        return false;
     }
 
-    // Phase 1: Unpack.
-    Logger::instance().info("Phase 1: Unpacking OTA content...");
-    {
-        QString searchPaths = updatesDir;
-        if (isNvidia)
-            searchPaths += " " + nvidiaDir;
+    // Split null-delimited output into individual paths.
+    QStringList debs = output.split('\0', Qt::SkipEmptyParts);
+    Logger::instance().info(QString("Found %1 .deb package(s).").arg(debs.size()));
+    for (const QString& deb : debs)
+        Logger::instance().debug("  deb: " + deb);
 
-        QString unpackCmd = QString(
-            "export DEBIAN_FRONTEND=noninteractive && "
-            "export TMPDIR=/tmp && "
-            "find %1 -name '*.deb' -print0 | "
-            "xargs -0 -n 120 %2 --force-all --unpack"
-        ).arg(searchPaths, m_pkgManagerPath);
+    if (debs.isEmpty()) {
+        Logger::instance().warning("No .deb packages found. Nothing to install.");
+        return true;
+    }
 
-        Logger::instance().debug("Unpack command: " + unpackCmd);
+    // --- Phase 2: Unpack in batches of 120 ---
+    Logger::instance().info("--- Phase 2: Unpacking packages ---");
 
-        QString output, error;
-        bool ok = m_sysInterface->executeInOverlay({"/bin/sh", "-c", unpackCmd}, output, error);
-        if (!output.trimmed().isEmpty()) Logger::instance().debug("unpack stdout: " + output.trimmed());
-        if (!error.trimmed().isEmpty())  Logger::instance().debug("unpack stderr: " + error.trimmed());
-        if (!ok) {
-            Logger::instance().error("Failed to unpack OTA content (exit non-zero)");
+    const int batchSize = 120;
+    int totalBatches = (debs.size() + batchSize - 1) / batchSize;
+
+    for (int i = 0; i < debs.size(); i += batchSize) {
+        QStringList batch = debs.mid(i, batchSize);
+        int batchNum = (i / batchSize) + 1;
+        Logger::instance().info(QString("Unpacking batch %1/%2 (%3 package(s))...")
+                                    .arg(batchNum).arg(totalBatches).arg(batch.size()));
+
+        QStringList unpackArgs = {m_pkgManagerPath, "--force-all", "--unpack"};
+        unpackArgs << batch;
+
+        if (!m_sysInterface->executeInOverlay(unpackArgs, output, error)) {
+            Logger::instance().error(QString("Unpack failed on batch %1/%2").arg(batchNum).arg(totalBatches));
+            if (!error.trimmed().isEmpty()) Logger::instance().error("unpack stderr: " + error.trimmed());
             return false;
         }
-        Logger::instance().success("Phase 1 unpack complete.");
+        Logger::instance().success(QString("Batch %1/%2 unpacked.").arg(batchNum).arg(totalBatches));
     }
 
-    // Phase 2: Configure loop until audit reports clean.
-    Logger::instance().info("Phase 2: Configuring packages...");
-    int maxPasses = 15;
-    int pass = 1;
+    Logger::instance().success("All packages unpacked.");
+
+    // --- Phase 3: Configure + audit loop ---
+    Logger::instance().info("--- Phase 3: Configuring packages ---");
+
+    const int maxPasses = 15;
     QString lastAudit;
 
-    while (pass <= maxPasses) {
-        Logger::instance().info(QString("Configuration pass %1/%2").arg(pass).arg(maxPasses));
+    for (int pass = 1; pass <= maxPasses; ++pass) {
+        Logger::instance().info(QString("Configuration pass %1/%2...").arg(pass).arg(maxPasses));
 
-        QString output, error;
-        QStringList confArgs;
-        confArgs << "/bin/sh" << "-c"
-                 << QString("export DEBIAN_FRONTEND=noninteractive && export TMPDIR=/tmp && "
-                            "%1 --force-all --configure -a").arg(m_pkgManagerPath);
-        bool confOk = m_sysInterface->executeInOverlay(confArgs, output, error);
-        if (!output.trimmed().isEmpty()) Logger::instance().debug("configure stdout: " + output.trimmed());
-        if (!error.trimmed().isEmpty())  Logger::instance().debug("configure stderr: " + error.trimmed());
-        Logger::instance().debug(QString("configure exit: %1").arg(confOk ? "0" : "non-zero (expected, --force-all)"));
+        // --configure -a: configure all unpacked packages; ignore non-zero exit (may be partial)
+        m_sysInterface->executeInOverlay({m_pkgManagerPath, "--force-all", "--configure", "-a"}, output, error);
 
-        QStringList auditArgs;
-        auditArgs << m_pkgManagerPath << "--audit";
-        m_sysInterface->executeInOverlay(auditArgs, output, error);
+        // --audit: report packages in inconsistent state
+        m_sysInterface->executeInOverlay({m_pkgManagerPath, "--audit"}, output, error);
         QString currentAudit = output.trimmed();
 
-        if (!currentAudit.isEmpty())
-            Logger::instance().info("dpkg --audit output:\n" + currentAudit);
-
         if (currentAudit.isEmpty()) {
-            Logger::instance().success("Package configuration converged after " + QString::number(pass) + " pass(es).");
-            m_sysInterface->executeInOverlay({"/usr/bin/rm", "-rf", "/tmp/pkgman-extracted"}, output, error);
-            return true;
+            Logger::instance().success(QString("Package configuration converged after %1 pass(es).").arg(pass));
+            break;
         }
 
-        if (currentAudit == lastAudit && pass > 1) {
-            Logger::instance().error("Package configuration stuck — no progress between passes. Aborting.");
-            Logger::instance().error("Final dpkg --audit:\n" + currentAudit);
+        Logger::instance().info("dpkg --audit output:\n" + currentAudit);
+
+        if (pass > 1 && currentAudit == lastAudit) {
+            Logger::instance().error("Package configuration stuck — no progress between passes.");
+            return false;
+        }
+
+        if (pass == maxPasses) {
+            Logger::instance().error(QString("Package configuration failed to converge after %1 passes.").arg(maxPasses));
             return false;
         }
 
         lastAudit = currentAudit;
-        pass++;
         QThread::sleep(1);
     }
 
-    Logger::instance().error(QString("Package configuration failed to converge after %1 passes.").arg(maxPasses));
-    Logger::instance().error("Final dpkg --audit:\n" + lastAudit);
-    return false;
+    m_sysInterface->executeInOverlay({"/usr/bin/rm", "-rf", "/tmp/pkgman-extracted"}, output, error);
+    Logger::instance().success("Package updates applied successfully.");
+    return true;
 }
 
 bool UpdateManager::runCleanupCrew() {
@@ -813,7 +824,7 @@ bool UpdateManager::runCleanupCrew() {
     if (!output.trimmed().isEmpty()) Logger::instance().info("CCU stdout: " + output.trimmed());
     if (!error.trimmed().isEmpty())  Logger::instance().info("CCU stderr: " + error.trimmed());
     if (!ok) {
-        Logger::instance().error("Cleanup crew script exited with non-zero status");
+        Logger::instance().error("Cleanup crew exited with non-zero status");
         return false;
     }
     Logger::instance().success("Cleanup crew completed successfully.");
