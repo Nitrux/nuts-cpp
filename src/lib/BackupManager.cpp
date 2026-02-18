@@ -18,9 +18,9 @@ BackupManager::BackupManager(SystemInterface* sysInterface, QObject* parent)
 bool BackupManager::createBackup(const QString& partition, const QString& outputPath) {
     Logger::instance().info("Creating XFS backup of " + partition);
 
-    // Validate output path to prevent path traversal
-    QString backupDir = Config::instance().backupDir();
-    if (!m_sysInterface->validatePath(outputPath, backupDir)) {
+    // Validate output path to prevent path traversal (backup files go into xfsDir)
+    QString xfsDir = Config::instance().xfsDir();
+    if (!m_sysInterface->validatePath(outputPath, xfsDir)) {
         Logger::instance().error("SECURITY: Invalid backup output path");
         return false;
     }
