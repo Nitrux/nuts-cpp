@@ -42,6 +42,8 @@ private:
     SystemInterface* m_sysInterface;
 
     QString m_minTarget;
+    QString m_otaFile;
+    QString m_otaBranch;
     QString m_updateUrl;
     QString m_updateChecksum;
     QString m_otaChecksum;
@@ -60,8 +62,6 @@ private:
     bool performPackageUpdates();
     bool runCleanupCrew();
     void cleanup();
-
-    bool downloadAndVerifyComponent(const QString& componentName, const QString& expectedChecksum);
 
     // Version comparison helper
     static int compareVersions(const QString& version1, const QString& version2);
