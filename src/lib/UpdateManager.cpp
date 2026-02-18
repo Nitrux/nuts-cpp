@@ -218,8 +218,7 @@ bool UpdateManager::applyUpdate() {
     }
     lockFile.close();
 
-    // HOST SIDE: Check disk space on the host before entering the chroot,
-    // so QStorageInfo can read the available space on mounted partitions.
+    // Check disk space on the host before entering the chroot.
     Q_EMIT updateProgress(5, "Checking disk space");
     if (!checkDiskSpace()) {
         Logger::instance().error("Insufficient disk space for update");
@@ -227,17 +226,16 @@ bool UpdateManager::applyUpdate() {
         return false;
     }
 
-    // CHROOT SIDE: Everything from here runs inside overlayroot-chroot,
-    // writing to the persistent lower layer — matching the original nuts-cru
-    // architecture where the entire update executes inside the chroot.
+    // Everything from here runs inside overlayroot-chroot.
 
-    // Step 1: Mount devtmpfs inside the chroot (required for device nodes
-    // that dpkg maintainer scripts and initramfs-tools depend on).
+    // Step 1: Prepare chroot environment.
     Q_EMIT updateProgress(8, "Preparing chroot environment");
     {
         QString output, error;
         m_sysInterface->executeInOverlay({"/usr/bin/mount", "-t", "devtmpfs", "dev", "/dev"}, output, error);
         // Non-fatal: may already be mounted; proceed regardless.
+        m_sysInterface->executeInOverlay({"/usr/bin/mkdir", "-p", "/tmp"}, output, error);
+        m_sysInterface->executeInOverlay({"/usr/bin/chmod", "1777", "/tmp"}, output, error);
     }
 
     Q_EMIT updateProgress(10, "Mounting partitions");
@@ -289,6 +287,29 @@ bool UpdateManager::applyUpdate() {
         return false;
     }
 
+    // Create nx-pkgmgr-policy symlinks.
+    {
+        QString output, error;
+        QStringList aptTools = {"apt", "apt-cache", "apt-cdrom", "apt-config", "apt-get", "apt-mark"};
+        for (const QString& tool : aptTools)
+            m_sysInterface->executeInOverlay({"/usr/bin/ln", "-sf", "/usr/bin/nx-pkgmgr-policy", "/usr/bin/" + tool}, output, error);
+
+        QStringList dpkgTools = {
+            "dpkg", "dpkg-deb", "dpkg-divert", "dpkg-maintscript-helper", "dpkg-query",
+            "dpkg-realpath", "dpkg-split", "dpkg-statoverride", "dpkg-trigger",
+            "dpkg-architecture", "dpkg-buildapi", "dpkg-buildflags", "dpkg-buildpackage",
+            "dpkg-buildtree", "dpkg-checkbuilddeps", "dpkg-distaddfile",
+            "dpkg-genbuildinfo", "dpkg-genchanges", "dpkg-gencontrol", "dpkg-gensymbols",
+            "dpkg-mergechangelogs", "dpkg-name", "dpkg-parsechangelog",
+            "dpkg-scanpackages", "dpkg-scansources", "dpkg-shlibdeps", "dpkg-source", "dpkg-vendor"
+        };
+        for (const QString& tool : dpkgTools)
+            m_sysInterface->executeInOverlay({"/usr/bin/ln", "-sf", "/usr/bin/nx-pkgmgr-policy", "/usr/bin/" + tool}, output, error);
+
+        // Flush all pending writes to disk before exiting the chroot.
+        m_sysInterface->executeInOverlay({"/usr/bin/sync"}, output, error);
+    }
+
     cleanup();
     QFile::remove(lockPath);
 
@@ -302,10 +323,7 @@ bool UpdateManager::applyUpdate() {
 // ----------------------
 
 bool UpdateManager::prepareSystemPartitions() {
-    // All mount operations run inside the chroot (lower layer), matching
-    // the original nuts-cru behaviour. findfs, mount, and mkdir are invoked
-    // via executeInOverlay so the mounts are visible inside the chroot context
-    // where all subsequent work happens.
+    // All mount operations run inside the chroot (lower layer).
     QString output, error;
 
     // Resolve and mount NX_HOME → /home
@@ -336,9 +354,7 @@ bool UpdateManager::prepareSystemPartitions() {
 }
 
 bool UpdateManager::downloadOTAPayload() {
-    // Runs inside the chroot (lower layer), matching the original nuts-cru behaviour.
-    // axel -n 10 opens 10 parallel connections, bypassing SourceForge CDN per-connection
-    // throttling. Each mirror is tried in sequence; the first to pass checksum wins.
+    // Runs inside the chroot (lower layer).
     QString otaPath = Config::instance().downloadDir() + "/nuts-ota.squashfs";
     QString output, error;
 
@@ -409,9 +425,9 @@ bool UpdateManager::mountOTAPayload() {
 }
 
 bool UpdateManager::prepareUpdateTools() {
-    QString workDir = Config::instance().workDir();
-    QString appImagePath = workDir + "/dpkg-tooling.AppImage";
-    QString extractDir = workDir + "/pkgman-extracted";
+    // Use /tmp inside the chroot.
+    QString appImagePath = "/tmp/dpkg-1.22.21-x86_64.AppImage";
+    QString extractDir = "/tmp/pkgman-extracted";
     QString appRunPath = extractDir + "/squashfs-root/AppRun";
 
     QString appImageUrl = "https://raw.githubusercontent.com/Nitrux/storage/master/Other/AppImages/dpkg-1.22.21-x86_64.AppImage";
@@ -457,8 +473,9 @@ bool UpdateManager::prepareUpdateTools() {
 
     m_pkgManagerPath = appRunPath;
 
-    // Symlink tools into the lower layer.
-    QStringList tools = {"dpkg", "dpkg-deb", "dpkg-divert", "dpkg-query",
+    m_sysInterface->executeInOverlay({"/usr/bin/ln", "-svf", appRunPath, "/usr/bin/dpkg"}, output, error);
+
+    QStringList tools = {"dpkg-deb", "dpkg-divert", "dpkg-query",
                          "dpkg-realpath", "dpkg-split", "dpkg-statoverride",
                          "dpkg-trigger", "dpkg-maintscript-helper", "update-alternatives"};
 
@@ -481,11 +498,13 @@ bool UpdateManager::prepareUpdateTools() {
 
 bool UpdateManager::syncPackageData() {
     QString url = QString("https://raw.githubusercontent.com/Nitrux/storage/master/Other/var-lib-dpkg-%1.tar.xz").arg(m_minTarget);
-    QString tarPath = Config::instance().workDir() + "/var-lib-dpkg.tar.xz";
+    QString tarPath = QString("/tmp/var-lib-dpkg-%1.tar.xz").arg(m_minTarget);
     QString expectedChecksum = m_queryData.value("VAR_LIB_SUM");
     QString output, error;
 
-    // Download inside chroot using axel
+    // Remove any stale file first
+    m_sysInterface->executeInOverlay({"/usr/bin/rm", "-f", tarPath}, output, error);
+
     Logger::instance().info("Downloading package database archive...");
     if (!m_sysInterface->executeInOverlay(
             {"/usr/bin/axel", "-n", "10", "-o", tarPath, url}, output, error)) {
@@ -493,7 +512,7 @@ bool UpdateManager::syncPackageData() {
         return false;
     }
 
-    // Verify checksum inside chroot before extraction
+    // Verify checksum inside chroot before extraction.
     // Extracting an unverified archive to / is extremely dangerous (zip slip / overwrite attacks).
     Logger::instance().info("Verifying package database archive...");
     QString checksumCmd = QString("echo '%1  %2' | /usr/bin/sha256sum -c -")
@@ -504,9 +523,17 @@ bool UpdateManager::syncPackageData() {
         return false;
     }
 
-    // Extract into the lower layer via overlayroot-chroot.
-    if (!m_sysInterface->executeInOverlay({"/usr/bin/tar", "-xf", tarPath, "-C", "/"}, output, error)) {
+    // Extract into the lower layer — original uses: cd / && tar -xf $TARFILE
+    if (!m_sysInterface->executeInOverlay(
+            {"/bin/sh", "-c", "mkdir -p /var/lib/dpkg && cd / && /usr/bin/tar -xf " + tarPath},
+            output, error)) {
         Logger::instance().error("Failed to extract package database: " + error);
+        return false;
+    }
+
+    // Confirm extraction succeeded.
+    if (!m_sysInterface->executeInOverlay({"/usr/bin/test", "-f", "/var/lib/dpkg/status"}, output, error)) {
+        Logger::instance().error("Package database extraction failed: /var/lib/dpkg/status not found");
         return false;
     }
 
@@ -518,59 +545,38 @@ bool UpdateManager::performPackageUpdates() {
     QString updatesDir = otaDir + "/updates";
     QString nvidiaDir = otaDir + "/nvidia";
 
-    // Collect deb file list from inside the chroot — squashfsDir is mounted there
-    QString output, error;
-    m_sysInterface->executeInOverlay(
-        {"/usr/bin/find", updatesDir, "-name", "*.deb", "-type", "f"}, output, error);
-    QStringList debFiles = output.split('\n', Qt::SkipEmptyParts);
-
+    // Detect NVIDIA on the host via /proc (shared with chroot).
     bool isNvidia = QDir("/proc/driver/nvidia").exists();
     if (!isNvidia) {
+        QString output, error;
         m_sysInterface->executeCommand("/usr/bin/lspci", {}, output, error);
         if (output.contains("NVIDIA", Qt::CaseInsensitive)) isNvidia = true;
     }
+    if (isNvidia)
+        Logger::instance().info("NVIDIA hardware detected. Including NVIDIA drivers.");
 
-    if (isNvidia) {
-        QString nvidiaOutput, nvidiaError;
-        m_sysInterface->executeInOverlay(
-            {"/usr/bin/find", nvidiaDir, "-name", "*.deb", "-type", "f"}, nvidiaOutput, nvidiaError);
-        QStringList nvidiaDebs = nvidiaOutput.split('\n', Qt::SkipEmptyParts);
-        if (!nvidiaDebs.isEmpty()) {
-            Logger::instance().info("NVIDIA hardware detected. Including NVIDIA drivers.");
-            debFiles << nvidiaDebs;
-        }
-    }
+    // Phase 1: Unpack.
+    Logger::instance().info("Phase 1: Unpacking OTA content...");
+    {
+        QString searchPaths = updatesDir;
+        if (isNvidia)
+            searchPaths += " " + nvidiaDir;
 
-    if (debFiles.isEmpty()) {
-        Logger::instance().warning("No packages found to update.");
-        return true; 
-    }
-
-    // Phase 1: Unpack
-    // All dpkg operations run inside overlayroot-chroot so they write to the
-    // lower (persistent) layer, not the upper (ephemeral) overlay layer.
-    const int BATCH_SIZE = 50;
-    Logger::instance().info(QString("Unpacking %1 packages in batches...").arg(debFiles.size()));
-
-    for (int i = 0; i < debFiles.size(); i += BATCH_SIZE) {
-        QStringList batch = debFiles.mid(i, BATCH_SIZE);
-        Logger::instance().info(QString("Unpacking batch %1 of %2...").arg((i/BATCH_SIZE)+1).arg((debFiles.size()+BATCH_SIZE-1)/BATCH_SIZE));
-
-        QStringList args;
-        args << "/usr/bin/env"
-             << "DEBIAN_FRONTEND=noninteractive"
-             << "TMPDIR=" + Config::instance().workDir()
-             << m_pkgManagerPath << "--force-all" << "--unpack";
-        args << batch;
+        QString unpackCmd = QString(
+            "export DEBIAN_FRONTEND=noninteractive && "
+            "export TMPDIR=/tmp && "
+            "find %1 -name '*.deb' -print0 | "
+            "xargs -0 -n 120 %2 --force-all --unpack"
+        ).arg(searchPaths, m_pkgManagerPath);
 
         QString output, error;
-        if (!m_sysInterface->executeInOverlay(args, output, error)) {
-            Logger::instance().error("Failed to unpack batch: " + error);
+        if (!m_sysInterface->executeInOverlay({"/bin/sh", "-c", unpackCmd}, output, error)) {
+            Logger::instance().error("Failed to unpack OTA content: " + error);
             return false;
         }
     }
 
-    // Phase 2: Configure loop
+    // Phase 2: Configure loop audit reports clean.
     Logger::instance().info("Configuring packages...");
     int maxPasses = 15;
     int pass = 1;
@@ -581,10 +587,9 @@ bool UpdateManager::performPackageUpdates() {
 
         QString output, error;
         QStringList confArgs;
-        confArgs << "/usr/bin/env"
-                 << "DEBIAN_FRONTEND=noninteractive"
-                 << "TMPDIR=" + Config::instance().workDir()
-                 << m_pkgManagerPath << "--force-all" << "--configure" << "-a";
+        confArgs << "/bin/sh" << "-c"
+                 << QString("export DEBIAN_FRONTEND=noninteractive && export TMPDIR=/tmp && "
+                            "%1 --force-all --configure -a").arg(m_pkgManagerPath);
         m_sysInterface->executeInOverlay(confArgs, output, error);
 
         QStringList auditArgs;
@@ -594,6 +599,7 @@ bool UpdateManager::performPackageUpdates() {
 
         if (currentAudit.isEmpty()) {
             Logger::instance().success("Package configuration converged.");
+            m_sysInterface->executeInOverlay({"/usr/bin/rm", "-rf", "/tmp/pkgman-extracted"}, output, error);
             return true;
         }
 
@@ -614,7 +620,7 @@ bool UpdateManager::performPackageUpdates() {
 
 bool UpdateManager::runCleanupCrew() {
     QString ccuChecksum = m_queryData.value("NUTS_CCU_CHECKSUM");
-    QString ccuPath = Config::instance().workDir() + "/nuts-cpp-ccu";
+    QString ccuPath = "/tmp/nuts-cpp-ccu";
     QString output, error;
 
     // Build the component URL from internal config
@@ -651,19 +657,11 @@ bool UpdateManager::runCleanupCrew() {
 void UpdateManager::cleanup() {
     QString output, error;
 
-    // Unmount inside chroot — mounts were created inside the chroot
+    // Unmount inside chroot — mounts were created inside the chroot.
     m_sysInterface->executeInOverlay({"/usr/bin/umount", Config::instance().squashfsDir()}, output, error);
     m_sysInterface->executeInOverlay({"/usr/bin/umount", "/home"}, output, error);
     m_sysInterface->executeInOverlay({"/usr/bin/umount", "/var/lib"}, output, error);
     m_sysInterface->executeInOverlay({"/usr/bin/umount", "/dev"}, output, error);
-
-    // Remove dpkg symlinks inside chroot
-    QStringList tools = {"dpkg", "dpkg-deb", "dpkg-query", "update-alternatives",
-                         "dpkg-divert", "dpkg-realpath", "dpkg-split",
-                         "dpkg-statoverride", "dpkg-trigger", "dpkg-maintscript-helper"};
-    for (const QString& tool : tools) {
-        m_sysInterface->executeInOverlay({"/usr/bin/rm", "-f", "/usr/bin/" + tool}, output, error);
-    }
 }
 
 
