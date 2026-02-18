@@ -225,26 +225,25 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
         return false;
     }
 
-    // Check if partial download exists
-    QFile partialFile(destination + ".partial");
-    qint64 existingBytes = 0;
-    bool resuming = false;
-    const qint64 MAX_PARTIAL_SIZE = 10LL * 1024 * 1024 * 1024; // 10 GB safety limit
-
-    if (partialFile.exists()) {
-        existingBytes = partialFile.size();
-
-        // Validate partial file size is reasonable
-        if (existingBytes > MAX_PARTIAL_SIZE) {
-            Logger::instance().warning("SECURITY: Partial file too large, removing and restarting download");
-            partialFile.remove();
-            existingBytes = 0;
-        } else if (existingBytes > 0) {
-            Logger::instance().info(QString("Found partial download (%1 MB), attempting resume")
-                                   .arg(existingBytes / (1024.0 * 1024.0), 0, 'f', 2));
-            resuming = true;
+    // Prefer axel for multi-connection downloading.
+    if (QFile::exists("/usr/bin/axel")) {
+        // Always remove any stale destination before axel writes it.
+        QFile::remove(destination);
+        QString output, error;
+        bool ok = executeCommand("/usr/bin/axel",
+                                 {"-n", "10", "-o", destination, url},
+                                 output, error,
+                                 3600000);
+        if (ok && QFile::exists(destination)) {
+            Logger::instance().success("Downloaded: " + QFileInfo(destination).fileName());
+            return true;
         }
+        Logger::instance().warning("axel download failed, falling back to QNetworkAccessManager");
+        QFile::remove(destination);
     }
+
+    // Fallback: single-connection streaming via QNetworkAccessManager.
+    QFile::remove(destination + ".partial");
 
     QNetworkAccessManager manager;
 
@@ -253,10 +252,11 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
     request.setTransferTimeout(600000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
-    // Add Range header for resume support
-    if (resuming && existingBytes > 0) {
-        QByteArray rangeHeader = QString("bytes=%1-").arg(existingBytes).toUtf8();
-        request.setRawHeader("Range", rangeHeader);
+    QString partialPath = destination + ".partial";
+    QFile outFile(partialPath);
+    if (!outFile.open(QIODevice::WriteOnly)) {
+        Logger::instance().error("Failed to open partial file for writing: " + partialPath);
+        return false;
     }
 
     QNetworkReply* reply = manager.get(request);
@@ -266,14 +266,20 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
     timeoutTimer.setSingleShot(true);
     timeoutTimer.setInterval(600000);
 
-    qint64 lastBytesReceived = 0;
-    qint64 bytesTotal = 0;
+    bool writeError = false;
+
+    // Stream data to disk as it arrives — never buffer the full file in memory
+    connect(reply, &QNetworkReply::readyRead, this, [&]() {
+        QByteArray chunk = reply->read(1024 * 1024); // 1 MB chunks
+        if (outFile.write(chunk) != chunk.size()) {
+            Logger::instance().error("Disk write error while downloading");
+            writeError = true;
+            loop.quit();
+        }
+    });
 
     connect(reply, &QNetworkReply::downloadProgress, this,
-            [this, &lastBytesReceived, &bytesTotal](qint64 bytesReceived, qint64 totalBytes) {
-        lastBytesReceived = bytesReceived;
-        bytesTotal = totalBytes;
-
+            [this](qint64 bytesReceived, qint64 totalBytes) {
         int percentage = (totalBytes > 0) ? (bytesReceived * 100 / totalBytes) : 0;
         Q_EMIT downloadProgress(percentage, bytesReceived, totalBytes);
     });
@@ -284,50 +290,28 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
     timeoutTimer.start();
     loop.exec();
 
+    outFile.close();
+
     bool result = false;
 
-    if (reply->error() == QNetworkReply::NoError && timeoutTimer.isActive()) {
-        // Check if server supports resume (206 Partial Content)
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        bool serverSupportsResume = (statusCode == 206);
-
-        QIODevice::OpenMode openMode = QIODevice::WriteOnly;
-        if (resuming && serverSupportsResume) {
-            openMode = QIODevice::Append;
-            Logger::instance().info("Server supports resume, appending to existing file");
-        } else if (resuming && !serverSupportsResume) {
-            Logger::instance().warning("Server does not support resume, restarting download");
-            QFile::remove(destination + ".partial");
-            resuming = false;
+    if (!writeError && reply->error() == QNetworkReply::NoError && timeoutTimer.isActive()) {
+        if (QFile::exists(destination)) {
+            QFile::remove(destination);
         }
-
-        // Write to .partial file first
-        QString targetFile = destination + ".partial";
-        QFile file(targetFile);
-        if (file.open(openMode)) {
-            file.write(reply->readAll());
-            file.close();
-
-            // Move .partial to final destination
-            if (QFile::exists(destination)) {
-                QFile::remove(destination);
-            }
-            if (QFile::rename(targetFile, destination)) {
-                result = true;
-                Logger::instance().success("Downloaded: " + QFileInfo(destination).fileName());
-            } else {
-                Logger::instance().error("Failed to rename partial file to: " + destination);
-            }
+        if (QFile::rename(partialPath, destination)) {
+            result = true;
+            Logger::instance().success("Downloaded: " + QFileInfo(destination).fileName());
         } else {
-            Logger::instance().error("Failed to write file: " + targetFile);
+            Logger::instance().error("Failed to rename partial file to: " + destination);
         }
     } else {
-        QString error = reply->errorString();
+        QString err = reply->errorString();
         if (!timeoutTimer.isActive()) {
-            error = "Download timed out";
+            err = "Download timed out";
         }
-        Logger::instance().error("Download failed: " + error);
-        Logger::instance().info("Partial download saved for resume");
+        if (!writeError) {
+            Logger::instance().error("Download failed: " + err);
+        }
     }
 
     timeoutTimer.stop();
