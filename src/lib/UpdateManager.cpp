@@ -186,15 +186,17 @@ int UpdateManager::compareVersions(const QString& version1, const QString& versi
 bool UpdateManager::applyUpdate() {
     Logger::instance().info("Starting System Update Process...");
 
-    // Check available disk space before starting
-    Q_EMIT updateProgress(2, "Checking disk space");
-    if (!checkDiskSpace()) {
-        Logger::instance().error("Insufficient disk space for update");
+    Q_EMIT updateProgress(5, "Mounting partitions");
+    if (!prepareSystemPartitions()) {
+        cleanup();
         return false;
     }
 
-    Q_EMIT updateProgress(5, "Mounting partitions");
-    if (!prepareSystemPartitions()) {
+    // Check disk space after partitions are mounted so QStorageInfo
+    // can read the actual available space on /home (NX_HOME partition).
+    Q_EMIT updateProgress(8, "Checking disk space");
+    if (!checkDiskSpace()) {
+        Logger::instance().error("Insufficient disk space for update");
         cleanup();
         return false;
     }
