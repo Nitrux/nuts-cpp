@@ -522,22 +522,24 @@ bool UpdateManager::performPackageUpdates() {
     }
 
     // Phase 1: Unpack
-    // Process in batches to avoid exceeding ARG_MAX
-    const int BATCH_SIZE = 50; 
+    // All dpkg operations run inside overlayroot-chroot so they write to the
+    // lower (persistent) layer, not the upper (ephemeral) overlay layer.
+    const int BATCH_SIZE = 50;
     Logger::instance().info(QString("Unpacking %1 packages in batches...").arg(debFiles.size()));
-    
+
     for (int i = 0; i < debFiles.size(); i += BATCH_SIZE) {
         QStringList batch = debFiles.mid(i, BATCH_SIZE);
         Logger::instance().info(QString("Unpacking batch %1 of %2...").arg((i/BATCH_SIZE)+1).arg((debFiles.size()+BATCH_SIZE-1)/BATCH_SIZE));
-        
+
         QStringList args;
-        // Use secure work directory for temporary files to prevent /tmp race conditions
-        args << "DEBIAN_FRONTEND=noninteractive" << "TMPDIR=" + Config::instance().workDir();
-        args << m_pkgManagerPath << "--force-all" << "--unpack";
+        args << "/usr/bin/env"
+             << "DEBIAN_FRONTEND=noninteractive"
+             << "TMPDIR=" + Config::instance().workDir()
+             << m_pkgManagerPath << "--force-all" << "--unpack";
         args << batch;
 
         QString output, error;
-        if (!m_sysInterface->executeCommand("/usr/bin/env", args, output, error, 600000)) {
+        if (!m_sysInterface->executeInOverlay(args, output, error)) {
             Logger::instance().error("Failed to unpack batch: " + error);
             return false;
         }
@@ -551,16 +553,18 @@ bool UpdateManager::performPackageUpdates() {
 
     while (pass <= maxPasses) {
         Logger::instance().info(QString("Configuration pass %1/%2").arg(pass).arg(maxPasses));
-        
+
         QString output, error;
         QStringList confArgs;
-        confArgs << "DEBIAN_FRONTEND=noninteractive" << "TMPDIR=" + Config::instance().workDir();
-        confArgs << m_pkgManagerPath << "--force-all" << "--configure" << "-a";
-        m_sysInterface->executeCommand("/usr/bin/env", confArgs, output, error, 600000);
+        confArgs << "/usr/bin/env"
+                 << "DEBIAN_FRONTEND=noninteractive"
+                 << "TMPDIR=" + Config::instance().workDir()
+                 << m_pkgManagerPath << "--force-all" << "--configure" << "-a";
+        m_sysInterface->executeInOverlay(confArgs, output, error);
 
         QStringList auditArgs;
         auditArgs << m_pkgManagerPath << "--audit";
-        m_sysInterface->executeCommand("/usr/bin/env", auditArgs, output, error);
+        m_sysInterface->executeInOverlay(auditArgs, output, error);
         QString currentAudit = output.trimmed();
 
         if (currentAudit.isEmpty()) {

@@ -213,7 +213,7 @@ bool SystemInterface::isMounted(const QString& mountPoint) {
 
 bool SystemInterface::executeInOverlay(const QStringList& command, QString& output, QString& error) {
     QString program = "/usr/sbin/overlayroot-chroot";
-    return executeCommand(program, command, output, error);
+    return executeCommand(program, command, output, error, 600000);
 }
 
 bool SystemInterface::downloadFile(const QString& url, const QString& destination) {
