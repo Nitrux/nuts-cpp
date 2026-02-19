@@ -228,6 +228,17 @@ bool SystemInterface::executeInOverlay(const QStringList& command, QString& outp
     return executeCommand(program, command, output, error, 600000);
 }
 
+bool SystemInterface::executeInOverlayAgent(const QStringList& command,
+                                            QString& output, QString& error,
+                                            int timeout) {
+    // One long-running call that executes nuts-agent inside the chroot.
+    // The extended timeout (default 2 hours) covers the full OTA pipeline:
+    // partition mounting, multi-gigabyte download, dpkg unpack + configure.
+    Logger::instance().info(
+        QString("Launching nuts-agent in chroot (timeout %1s)").arg(timeout / 1000));
+    return executeCommand("/usr/sbin/overlayroot-chroot", command, output, error, timeout);
+}
+
 bool SystemInterface::downloadFile(const QString& url, const QString& destination) {
     Logger::instance().info("Downloading: " + url);
 

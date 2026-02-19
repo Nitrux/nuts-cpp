@@ -47,21 +47,17 @@ private:
     QString m_updateUrl;
     QString m_updateChecksum;
     QString m_otaChecksum;
-    QString m_pkgManagerPath;
     QStringList m_mirrorList;
     QMap<QString, QString> m_queryData;
 
-    // Helper methods for update process
+    // Pre-chroot helpers (run on host)
     bool checkDiskSpace();
-    bool prepareSystemPartitions();
-    bool downloadOTAPayload();
-    bool verifySquashFSIntegrity(const QString& squashfsPath);
-    bool mountOTAPayload();
-    bool prepareUpdateTools();
-    bool syncPackageData();
-    bool performPackageUpdates();
-    bool runCleanupCrew();
-    void cleanup();
+
+    // Write the parameter file for nuts-agent and launch it in a single chroot session.
+    bool writeAgentParams(const QString& filePath, bool hasNvidia) const;
+
+    // Parse structured output from nuts-agent and relay progress signals.
+    void parseAndRelayAgentOutput(const QString& output);
 
     // Version comparison helper
     static int compareVersions(const QString& version1, const QString& version2);

@@ -38,6 +38,11 @@ public:
     // Overlay operations
     bool executeInOverlay(const QStringList& command, QString& output, QString& error);
 
+    // Long-running variant for the single agent call.
+    // Timeout defaults to 7200000 ms (2 hours) to cover the full update pipeline.
+    bool executeInOverlayAgent(const QStringList& command, QString& output,
+                               QString& error, int timeout = 7200000);
+
     // File operations
     bool downloadFile(const QString& url, const QString& destination);
     QString calculateMD5(const QString& filePath);
