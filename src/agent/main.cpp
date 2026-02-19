@@ -1,22 +1,3 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2026 Nitrux Latinoamericana S.C.
-
-// nuts-agent — runs as a single persistent process inside overlayroot-chroot.
-//
-// Usage:
-//   nuts-agent [<param-file>]
-//
-// <param-file> defaults to /var/cache/nuts-cpp/agent-params.ini
-// The file is written by UpdateManager::writeAgentParams() before launching.
-//
-// Exit codes:
-//   0   Success
-//   1-7 Step failure (see Agent::run())
-//   8   Interrupted by SIGINT / SIGTERM (cleanup() was called before exit)
-//  125  Required parameters missing in param file
-//  126  Param file not found
-//  127  Must run as root
-
 #include "NutsAgent.h"
 
 #include <QCoreApplication>

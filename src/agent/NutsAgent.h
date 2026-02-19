@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2026 Nitrux Latinoamericana S.C.
-
 #pragma once
 
 #include <QString>
@@ -96,8 +93,10 @@ private:
     // Set by prepareUpdateTools(), used by performPackageUpdates().
     QString m_pkgManagerPath;
 
-    // Set to non-zero by the POSIX signal handler (see installSignalHandlers()).
-    // Agent::exec() checks this after each command and aborts if set.
+public:
+    // Written exclusively by the POSIX signal handler (see installSignalHandlers()).
+    // Must be public so the file-scope signalHandler() function can set it.
+    // Read inside Agent::exec() and CHECK_INTERRUPTED() — never written elsewhere.
     static volatile sig_atomic_t s_interrupted;
 };
 
