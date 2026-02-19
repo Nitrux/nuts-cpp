@@ -64,7 +64,11 @@ public:
     qint64 getAvailableSpace(const QString& path);
 
     // Security validation
-    bool validatePath(const QString& path, const QString& allowedPrefix);
+    // When logError is false the function returns false silently; use this
+    // when the result is combined with a second OR-condition validatePath()
+    // call to avoid a spurious security log on the first failing attempt.
+    bool validatePath(const QString& path, const QString& allowedPrefix,
+                      bool logError = true);
     bool validateURL(const QString& url);
     QString sanitizeVersionString(const QString& version);
 

@@ -376,8 +376,17 @@ bool UpdateManager::verifyUpdateArchive(const QString& filePath, const QString& 
 }
 
 bool UpdateManager::checkDiskSpace() {
-    // Check space on /home for OTA download
+    // Check space on /home for OTA download.
+    // downloadDir (/home/.nuts/downloads) may not exist yet — it is created
+    // inside the chroot later.  Walk up to the nearest existing ancestor so
+    // QStorageInfo can resolve the correct mount point.
     QString downloadDir = Config::instance().downloadDir();
+    {
+        QDir d(downloadDir);
+        while (!d.exists() && !d.isRoot())
+            d.cdUp();
+        downloadDir = d.absolutePath();
+    }
     qint64 availableHome = m_sysInterface->getAvailableSpace(downloadDir);
 
     // Estimate needed space: OTA size (from metadata) + 20% buffer
@@ -404,9 +413,11 @@ bool UpdateManager::checkDiskSpace() {
     requiredHome = estimatedOtaSize + buffer; // +20% buffer
 
     if (availableHome < requiredHome) {
-        Logger::instance().error(QString("Insufficient space on /home. Required: %1 GB, Available: %2 GB")
-                                .arg(requiredHome / (1024.0 * 1024 * 1024), 0, 'f', 2)
-                                .arg(availableHome / (1024.0 * 1024 * 1024), 0, 'f', 2));
+        Logger::instance().error(
+            QString("Insufficient space on %1. Required: %2 GB, Available: %3 GB")
+            .arg(downloadDir)
+            .arg(requiredHome / (1024.0 * 1024 * 1024), 0, 'f', 2)
+            .arg(availableHome / (1024.0 * 1024 * 1024), 0, 'f', 2));
         return false;
     }
 

@@ -83,8 +83,12 @@ bool BackupManager::compressBackup(const QString& inputPath, const QString& outp
     QString backupDir = Config::instance().backupDir();
     QString xfsDir = Config::instance().xfsDir();
 
-    if (!m_sysInterface->validatePath(inputPath, backupDir) &&
-        !m_sysInterface->validatePath(inputPath, xfsDir)) {
+    // The XFS backup file always lives in xfsDir; backupDir is a secondary
+    // allowed location.  The first validatePath() call is silent so that it
+    // doesn't log a spurious security error when the file is legitimately in
+    // xfsDir and the backupDir check would never be reached.
+    if (!m_sysInterface->validatePath(inputPath, xfsDir, /*logError=*/false) &&
+        !m_sysInterface->validatePath(inputPath, backupDir)) {
         Logger::instance().error("SECURITY: Invalid input path for compression");
         return false;
     }

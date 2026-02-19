@@ -595,10 +595,12 @@ qint64 SystemInterface::getAvailableSpace(const QString& path) {
     return storage.bytesAvailable();
 }
 
-bool SystemInterface::validatePath(const QString& path, const QString& allowedPrefix) {
+bool SystemInterface::validatePath(const QString& path, const QString& allowedPrefix,
+                                   bool logError) {
     // Check for path traversal sequences
     if (path.contains("../") || path.contains("..\\")) {
-        Logger::instance().error("SECURITY: Path traversal sequence detected: " + path);
+        if (logError)
+            Logger::instance().error("SECURITY: Path traversal sequence detected: " + path);
         return false;
     }
 
@@ -620,8 +622,10 @@ bool SystemInterface::validatePath(const QString& path, const QString& allowedPr
 
     // Ensure path doesn't escape allowed directory
     if (!allowedPrefix.isEmpty() && !canonicalPath.startsWith(allowedPrefix)) {
-        Logger::instance().error("SECURITY: Path escapes allowed directory: " + path);
-        Logger::instance().error("Canonical: " + canonicalPath + ", Allowed: " + allowedPrefix);
+        if (logError) {
+            Logger::instance().error("SECURITY: Path escapes allowed directory: " + path);
+            Logger::instance().error("Canonical: " + canonicalPath + ", Allowed: " + allowedPrefix);
+        }
         return false;
     }
 
