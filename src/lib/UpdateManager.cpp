@@ -240,8 +240,15 @@ bool UpdateManager::applyUpdate() {
                             .arg(hasNvidia ? "yes" : "no"));
 
     // Write the parameter file that nuts-agent reads when it starts.
+    //
+    // Path constraints: the file must be visible inside overlayroot-chroot,
+    // which only bind-mounts /proc, /run, and /sys from the host into the
+    // chroot at /media/root-ro/{proc,run,sys}.  /var/cache (workDir) lives on
+    // the overlay tmpfs upperdir and is NOT visible inside the chroot.
+    // /run IS bind-mounted, so /run/nuts-agent-params.ini is reachable from
+    // both the host (writer) and the agent (reader).
     Q_EMIT updateProgress(7, "Preparing agent parameters");
-    const QString paramFile = Config::instance().workDir() + "/agent-params.ini";
+    const QString paramFile = QStringLiteral("/run/nuts-agent-params.ini");
     QFile::remove(paramFile);  // Remove any stale file from a previous run.
 
     if (!writeAgentParams(paramFile, hasNvidia)) {

@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
     // Param file path: first CLI arg, or the default written by UpdateManager.
     const QString paramFile = (argc > 1)
         ? QString::fromLocal8Bit(argv[1])
-        : QStringLiteral("/var/cache/nuts-cpp/agent-params.ini");
+        : QStringLiteral("/run/nuts-agent-params.ini");
 
     if (!QFile::exists(paramFile)) {
         std::cerr << "[NUTS-AGENT] ERROR: Parameter file not found: "
