@@ -207,15 +207,6 @@ Maui.ApplicationWindow {
                       : nutsClient.progressPercentage / 100.0
             }
 
-            Label {
-                Layout.fillWidth: true
-                text: (debugMode && (debugSimulatingUpdate || debugSimulatingRescue))
-                     ? qsTr("Debug Mode: Simulating operation")
-                     : nutsClient.progressMessage
-                wrapMode: Text.WordWrap
-                visible: text !== ""
-            }
-
         }
 
         Maui.Holder {
