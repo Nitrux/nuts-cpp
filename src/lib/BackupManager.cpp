@@ -151,16 +151,25 @@ bool BackupManager::executeZstdCompress(const QString& inputFile, const QString&
 bool BackupManager::restoreBackup(const QString& backupPath, const QString& targetMount) {
     Logger::instance().info("Restoring backup to " + targetMount);
 
-    // Validate backup path to prevent path traversal
+    // Validate backup path to prevent path traversal.
+    // Allow two modes:
+    // - Normal: /home/.nuts/xfs/xfs-backup.xfs (running system)
+    // - Rescue: /media/nitrux/NX_HOME/.nuts/xfs/xfs-backup.xfs (Live session)
     QString xfsDir = Config::instance().xfsDir();
-    if (!m_sysInterface->validatePath(backupPath, xfsDir)) {
-        Logger::instance().error("SECURITY: Invalid backup path for restoration");
+    if (!m_sysInterface->validatePath(backupPath, xfsDir, /*logError=*/false) &&
+        !m_sysInterface->validatePath(backupPath, "/media", /*logError=*/false)) {
+        Logger::instance().error("SECURITY: Invalid backup path for restoration: " + backupPath);
+        Logger::instance().error("Path must be under " + xfsDir + " or /media");
         return false;
     }
 
-    // Validate target mount point (should be under /mnt or specific mount locations)
-    if (!m_sysInterface->validatePath(targetMount, "/mnt")) {
-        Logger::instance().error("SECURITY: Invalid target mount point for restoration");
+    // Validate target mount point (should be under /mnt or /media for rescue mode).
+    // - Normal: /mnt/... (manual restore)
+    // - Rescue: /media/nitrux/NX_ROOT (Live session mount point)
+    if (!m_sysInterface->validatePath(targetMount, "/mnt", /*logError=*/false) &&
+        !m_sysInterface->validatePath(targetMount, "/media", /*logError=*/false)) {
+        Logger::instance().error("SECURITY: Invalid target mount point for restoration: " + targetMount);
+        Logger::instance().error("Path must be under /mnt or /media");
         return false;
     }
 

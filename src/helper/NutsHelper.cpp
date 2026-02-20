@@ -340,6 +340,47 @@ void NutsHelper::handleRescueOperation() {
     QString rootPartition = output.trimmed();
     Logger::instance().info("Found NX_ROOT: " + rootPartition);
 
+    // Safety check 1: Verify filesystem type (must be XFS for xfsrestore to work)
+    Logger::instance().info("Verifying NX_ROOT filesystem type");
+    if (!m_sysInterface->executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "TYPE", rootPartition}, output, error)) {
+        Logger::instance().error("Failed to determine filesystem type of NX_ROOT");
+        Logger::instance().error("blkid error: " + error);
+        emitOperationFailed("Cannot determine NX_ROOT filesystem type. Error: " + error);
+        return;
+    }
+    QString rootFilesystem = output.trimmed();
+    Logger::instance().info("NX_ROOT filesystem: " + rootFilesystem);
+
+    if (rootFilesystem != "xfs") {
+        Logger::instance().error("The filesystem of NX_ROOT is " + rootFilesystem + ", not XFS");
+        emitOperationFailed("The filesystem of NX_ROOT is " + rootFilesystem +
+                           ", not XFS. xfsrestore requires an XFS partition.");
+        return;
+    }
+    Logger::instance().success("Filesystem type verified: XFS");
+
+    // Safety check 2: Check for duplicate NX_ROOT labels to prevent restoring to the wrong drive
+    Logger::instance().info("Checking for duplicate NX_ROOT labels");
+    if (!m_sysInterface->executeCommand("/usr/sbin/blkid", {"-o", "device", "-t", "LABEL=NX_ROOT"}, output, error)) {
+        Logger::instance().warning("Failed to enumerate NX_ROOT labels (blkid error: " + error + "), proceeding with caution");
+    } else {
+        QStringList devices = output.trimmed().split('\n', Qt::SkipEmptyParts);
+        int labelCount = devices.size();
+        Logger::instance().info(QString("Found %1 device(s) with NX_ROOT label").arg(labelCount));
+
+        if (labelCount > 1) {
+            QString deviceList = devices.join(", ");
+            Logger::instance().error("CRITICAL: Duplicate NX_ROOT partition labels detected!");
+            Logger::instance().error("We found " + QString::number(labelCount) +
+                                    " devices with the label 'NX_ROOT': " + deviceList);
+            emitOperationFailed("Duplicate NX_ROOT partition labels detected! Found " +
+                               QString::number(labelCount) + " devices: " + deviceList +
+                               ". Please disconnect the external/secondary drive to ensure safe restoration.");
+            return;
+        }
+    }
+    Logger::instance().success("No duplicate labels detected");
+
     Logger::instance().info("Searching for NX_HOME partition");
     if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_HOME"}, output, error)) {
         Logger::instance().error("Failed to find NX_HOME partition");
@@ -355,6 +396,31 @@ void NutsHelper::handleRescueOperation() {
 
     QString rootMount = "/media/nitrux/NX_ROOT";
     QString homeMount = "/media/nitrux/NX_HOME";
+
+    // Safety check 3: Unmount if already mounted (from previous interrupted operation)
+    Logger::instance().info("Checking for stale mounts at " + rootMount);
+    if (m_sysInterface->isMounted(rootMount)) {
+        Logger::instance().warning(rootMount + " is already mounted. Unmounting...");
+        if (!m_sysInterface->unmountPartition(rootMount)) {
+            Logger::instance().error("Failed to unmount stale mount at " + rootMount);
+            emitOperationFailed("Failed to unmount stale mount at " + rootMount +
+                               ". Please unmount manually before retrying.");
+            return;
+        }
+        Logger::instance().success("Stale mount unmounted");
+    }
+
+    Logger::instance().info("Checking for stale mounts at " + homeMount);
+    if (m_sysInterface->isMounted(homeMount)) {
+        Logger::instance().warning(homeMount + " is already mounted. Unmounting...");
+        if (!m_sysInterface->unmountPartition(homeMount)) {
+            Logger::instance().error("Failed to unmount stale mount at " + homeMount);
+            emitOperationFailed("Failed to unmount stale mount at " + homeMount +
+                               ". Please unmount manually before retrying.");
+            return;
+        }
+        Logger::instance().success("Stale mount unmounted");
+    }
 
     Logger::instance().info("Creating mount point: " + rootMount);
     m_sysInterface->createDirectory(rootMount);
