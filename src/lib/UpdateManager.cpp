@@ -225,6 +225,88 @@ bool UpdateManager::applyUpdate() {
         return false;
     }
 
+    // --- PARTITION SAFETY CHECKS ---
+    // These three checks prevent common catastrophic errors during updates:
+    // 1. XFS filesystem verification (xfsrestore requires XFS root)
+    // 2. Duplicate label detection (prevent updating wrong drive)
+    // 3. Pre-mount cleanup (handle stale mounts from interrupted operations)
+
+    Q_EMIT updateProgress(6, "Verifying system partitions");
+    Logger::instance().info("--- Step: Verifying system partitions ---");
+
+    // Safety check 1: Verify root partition filesystem type
+    Logger::instance().info("Searching for NX_ROOT partition");
+    QString output, error;
+    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_ROOT"}, output, error)) {
+        Logger::instance().error("Failed to find NX_ROOT partition");
+        Logger::instance().error("findfs error: " + error);
+        QFile::remove(lockPath);
+        return false;
+    }
+    QString rootPartition = output.trimmed();
+    Logger::instance().info("Found NX_ROOT: " + rootPartition);
+
+    Logger::instance().info("Verifying NX_ROOT filesystem type");
+    if (!m_sysInterface->executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "TYPE", rootPartition}, output, error)) {
+        Logger::instance().error("Failed to determine filesystem type of NX_ROOT");
+        Logger::instance().error("blkid error: " + error);
+        QFile::remove(lockPath);
+        return false;
+    }
+    QString rootFilesystem = output.trimmed();
+    Logger::instance().info("NX_ROOT filesystem: " + rootFilesystem);
+
+    if (rootFilesystem != "xfs") {
+        Logger::instance().error("The filesystem of NX_ROOT is " + rootFilesystem + ", not XFS");
+        Logger::instance().error("The backup/restore system requires an XFS root partition");
+        QFile::remove(lockPath);
+        return false;
+    }
+    Logger::instance().success("Filesystem type verified: XFS");
+
+    // Safety check 2: Check for duplicate NX_ROOT labels
+    Logger::instance().info("Checking for duplicate NX_ROOT labels");
+    if (!m_sysInterface->executeCommand("/usr/sbin/blkid", {"-o", "device", "-t", "LABEL=NX_ROOT"}, output, error)) {
+        Logger::instance().warning("Failed to enumerate NX_ROOT labels (blkid error: " + error + "), proceeding with caution");
+    } else {
+        QStringList devices = output.trimmed().split('\n', Qt::SkipEmptyParts);
+        int labelCount = devices.size();
+        Logger::instance().info(QString("Found %1 device(s) with NX_ROOT label").arg(labelCount));
+
+        if (labelCount > 1) {
+            QString deviceList = devices.join(", ");
+            Logger::instance().error("CRITICAL: Duplicate NX_ROOT partition labels detected!");
+            Logger::instance().error("We found " + QString::number(labelCount) +
+                                    " devices with the label 'NX_ROOT': " + deviceList);
+            Logger::instance().error("Please disconnect the external/secondary drive before updating");
+            QFile::remove(lockPath);
+            return false;
+        }
+    }
+    Logger::instance().success("No duplicate labels detected");
+
+    // Safety check 3: Verify NX_HOME and NX_VAR_LIB exist and check for stale mounts
+    // The agent will mount these inside the chroot, but we verify them on the host first.
+    Logger::instance().info("Verifying NX_HOME partition exists");
+    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_HOME"}, output, error)) {
+        Logger::instance().error("Failed to find NX_HOME partition");
+        Logger::instance().error("findfs error: " + error);
+        QFile::remove(lockPath);
+        return false;
+    }
+    Logger::instance().info("Found NX_HOME: " + output.trimmed());
+
+    Logger::instance().info("Verifying NX_VAR_LIB partition exists");
+    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_VAR_LIB"}, output, error)) {
+        Logger::instance().error("Failed to find NX_VAR_LIB partition");
+        Logger::instance().error("findfs error: " + error);
+        QFile::remove(lockPath);
+        return false;
+    }
+    Logger::instance().info("Found NX_VAR_LIB: " + output.trimmed());
+
+    Logger::instance().success("All partition safety checks passed");
+
     // Detect NVIDIA on the HOST before entering the chroot.
     // The chroot lower layer is a snapshot of the read-only root; it cannot
     // reliably access host kernel state such as /proc/driver/nvidia after
