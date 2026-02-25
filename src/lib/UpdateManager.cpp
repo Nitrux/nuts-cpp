@@ -155,11 +155,11 @@ bool UpdateManager::isUpdateAvailable(const QString& currentVersion) {
     // Check if an update was recently applied but system hasn't rebooted yet.
     // This prevents re-running the update process when /etc/lsb-release hasn't
     // been updated on the read-only root filesystem.
-    const QString markerPath = "/var/run/nuts-cpp-pending-reboot";
-    QFile markerFile(markerPath);
-    if (markerFile.exists() && markerFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QString appliedVersion = QString::fromUtf8(markerFile.readAll()).trimmed();
-        markerFile.close();
+    const QString rebootMarkerPath = "/var/run/nuts-cpp-pending-reboot";
+    QFile rebootMarkerFile(rebootMarkerPath);
+    if (rebootMarkerFile.exists() && rebootMarkerFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QString appliedVersion = QString::fromUtf8(rebootMarkerFile.readAll()).trimmed();
+        rebootMarkerFile.close();
 
         // If the marker indicates we've already applied this target version,
         // don't show the update as available (reboot pending)
@@ -220,8 +220,11 @@ int UpdateManager::compareVersions(const QString& version1, const QString& versi
 bool UpdateManager::applyUpdate() {
     Logger::instance().info("=== Starting System Update Process ===");
 
-    // Acquire lock file to prevent concurrent update runs.
+    // File paths used throughout this function
     const QString lockPath = "/var/run/nuts-cpp.lock";
+    const QString rebootMarkerPath = "/var/run/nuts-cpp-pending-reboot";
+
+    // Acquire lock file to prevent concurrent update runs.
     QFile lockFile(lockPath);
     if (lockFile.exists()) {
         Logger::instance().error("Another instance of nuts-cpp is already running (" + lockPath + ")");
@@ -235,9 +238,8 @@ bool UpdateManager::applyUpdate() {
 
     // Clear any existing reboot marker from a previous update.
     // This allows applying a newer update if one becomes available.
-    const QString markerPath = "/var/run/nuts-cpp-pending-reboot";
-    if (QFile::exists(markerPath)) {
-        QFile::remove(markerPath);
+    if (QFile::exists(rebootMarkerPath)) {
+        QFile::remove(rebootMarkerPath);
         Logger::instance().info("Cleared previous reboot marker");
     }
 
@@ -398,11 +400,10 @@ bool UpdateManager::applyUpdate() {
     // Create a marker file to track that this update has been applied.
     // This prevents re-running the update when /etc/lsb-release hasn't been
     // updated yet (because the root filesystem is read-only until reboot).
-    const QString markerPath = "/var/run/nuts-cpp-pending-reboot";
-    QFile markerFile(markerPath);
-    if (markerFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        markerFile.write(m_minTarget.toUtf8());
-        markerFile.close();
+    QFile rebootMarkerFile(rebootMarkerPath);
+    if (rebootMarkerFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        rebootMarkerFile.write(m_minTarget.toUtf8());
+        rebootMarkerFile.close();
         Logger::instance().info("Created reboot marker for version: " + m_minTarget);
     } else {
         Logger::instance().warning("Failed to create reboot marker file (non-critical)");
