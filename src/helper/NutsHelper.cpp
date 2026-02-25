@@ -328,6 +328,15 @@ void NutsHelper::handleRescueOperation() {
     }
     Logger::instance().success("Live session detected");
 
+    // Check if a rescue operation was already completed in this live session.
+    // This prevents re-running the rescue when the user hasn't rebooted yet.
+    const QString rescueMarkerPath = "/var/run/nuts-cpp-rescue-completed";
+    if (QFile::exists(rescueMarkerPath)) {
+        Logger::instance().warning("A rescue operation was already completed in this session");
+        emitOperationFailed("Rescue operation already completed. Please reboot the system to verify the restoration.");
+        return;
+    }
+
     // Find partitions with absolute path to prevent PATH injection
     Logger::instance().info("Searching for NX_ROOT partition");
     QString output, error;
@@ -513,8 +522,21 @@ void NutsHelper::handleRescueOperation() {
     m_sysInterface->unmountPartition(rootMount);
     m_sysInterface->unmountPartition(homeMount);
 
+    // Create a marker file to track that the rescue operation completed successfully.
+    // This prevents re-running the rescue operation in the same live session.
+    const QString rescueMarkerPath = "/var/run/nuts-cpp-rescue-completed";
+    QFile rescueMarkerFile(rescueMarkerPath);
+    if (rescueMarkerFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QDateTime now = QDateTime::currentDateTime();
+        rescueMarkerFile.write(now.toString(Qt::ISODate).toUtf8());
+        rescueMarkerFile.close();
+        Logger::instance().info("Created rescue completion marker");
+    } else {
+        Logger::instance().warning("Failed to create rescue completion marker (non-critical)");
+    }
+
     Logger::instance().success("=== Rescue Operation Completed Successfully ===");
-    emitOperationCompleted(true, "System restored successfully");
+    emitOperationCompleted(true, "System restored successfully. Please reboot to verify the restoration.");
 }
 
 QVariantMap NutsHelper::GetSystemInfo() {

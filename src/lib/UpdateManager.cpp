@@ -152,6 +152,24 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
 bool UpdateManager::isUpdateAvailable(const QString& currentVersion) {
     if (m_minTarget.isEmpty()) return false;
 
+    // Check if an update was recently applied but system hasn't rebooted yet.
+    // This prevents re-running the update process when /etc/lsb-release hasn't
+    // been updated on the read-only root filesystem.
+    const QString markerPath = "/var/run/nuts-cpp-pending-reboot";
+    QFile markerFile(markerPath);
+    if (markerFile.exists() && markerFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QString appliedVersion = QString::fromUtf8(markerFile.readAll()).trimmed();
+        markerFile.close();
+
+        // If the marker indicates we've already applied this target version,
+        // don't show the update as available (reboot pending)
+        if (!appliedVersion.isEmpty() && appliedVersion == m_minTarget) {
+            Logger::instance().info("Update to version " + m_minTarget +
+                                  " already applied. Reboot required to complete.");
+            return false;
+        }
+    }
+
     // Update is available if current version is LESS THAN target
     // If currentVersion < MINTARGET → update available
     // If currentVersion >= MINTARGET → already updated or newer
@@ -214,6 +232,14 @@ bool UpdateManager::applyUpdate() {
         return false;
     }
     lockFile.close();
+
+    // Clear any existing reboot marker from a previous update.
+    // This allows applying a newer update if one becomes available.
+    const QString markerPath = "/var/run/nuts-cpp-pending-reboot";
+    if (QFile::exists(markerPath)) {
+        QFile::remove(markerPath);
+        Logger::instance().info("Cleared previous reboot marker");
+    }
 
     // --- PRE-CHROOT PHASE (runs on host) ---
 
@@ -368,6 +394,20 @@ bool UpdateManager::applyUpdate() {
     }
 
     QFile::remove(lockPath);
+
+    // Create a marker file to track that this update has been applied.
+    // This prevents re-running the update when /etc/lsb-release hasn't been
+    // updated yet (because the root filesystem is read-only until reboot).
+    const QString markerPath = "/var/run/nuts-cpp-pending-reboot";
+    QFile markerFile(markerPath);
+    if (markerFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        markerFile.write(m_minTarget.toUtf8());
+        markerFile.close();
+        Logger::instance().info("Created reboot marker for version: " + m_minTarget);
+    } else {
+        Logger::instance().warning("Failed to create reboot marker file (non-critical)");
+    }
+
     Q_EMIT updateProgress(100, "Update completed successfully");
     Logger::instance().success("=== System updated successfully. Please reboot. ===");
     return true;

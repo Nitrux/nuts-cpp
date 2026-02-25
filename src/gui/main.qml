@@ -345,5 +345,6 @@ Maui.ApplicationWindow {
 
     Component.onCompleted: {
         nutsClient.refreshSystemInfo()
+        nutsClient.checkForUpdates()
     }
 }
