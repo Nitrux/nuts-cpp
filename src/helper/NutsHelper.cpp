@@ -319,6 +319,9 @@ void NutsHelper::handleRescueOperation() {
     Logger::instance().info("=== Starting Rescue Operation ===");
     emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking environment");
 
+    // Marker file path used throughout this function
+    const QString rescueMarkerPath = "/var/run/nuts-cpp-rescue-completed";
+
     // Check if running from Live session
     Logger::instance().info("Checking for Live session (looking for /usr/bin/calamares)");
     if (!QFile::exists("/usr/bin/calamares")) {
@@ -330,7 +333,6 @@ void NutsHelper::handleRescueOperation() {
 
     // Check if a rescue operation was already completed in this live session.
     // This prevents re-running the rescue when the user hasn't rebooted yet.
-    const QString rescueMarkerPath = "/var/run/nuts-cpp-rescue-completed";
     if (QFile::exists(rescueMarkerPath)) {
         Logger::instance().warning("A rescue operation was already completed in this session");
         emitOperationFailed("Rescue operation already completed. Please reboot the system to verify the restoration.");
@@ -524,7 +526,6 @@ void NutsHelper::handleRescueOperation() {
 
     // Create a marker file to track that the rescue operation completed successfully.
     // This prevents re-running the rescue operation in the same live session.
-    const QString rescueMarkerPath = "/var/run/nuts-cpp-rescue-completed";
     QFile rescueMarkerFile(rescueMarkerPath);
     if (rescueMarkerFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QDateTime now = QDateTime::currentDateTime();
