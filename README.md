@@ -1,6 +1,6 @@
 # Nitrux Update Tool System (NUTS) | [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-Modern C++ rewrite of NUTS with MauiKit UI and PolicyKit integration.
+Modern C++ rewrite of NUTS with MauiKit and PolicyKit integration.
 
 ![NUTS](https://nxos.org/wp-content/uploads/2026/02/screenshot-20260204-141553.png)
 > A simple utility to update Nitrux.
