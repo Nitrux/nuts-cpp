@@ -10,6 +10,7 @@
 #include <QNetworkReply>
 #include <QEventLoop>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <unistd.h>
