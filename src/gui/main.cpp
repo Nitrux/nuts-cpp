@@ -29,9 +29,6 @@ int main(int argc, char* argv[]) {
     QIcon appIcon(QStringLiteral(":/assets/nuts-gui.svg")); 
     app.setWindowIcon(appIcon);
 
-    // 5. CONFIGURE MAUIKIT
-    MauiApp::instance()->setIconName("qrc:/assets/nuts-gui.svg");
-
     KLocalizedString::setApplicationDomain("nuts");
 
     // 6. SETUP ABOUT DATA
@@ -50,6 +47,10 @@ int main(int argc, char* argv[]) {
     
     about.setProgramLogo(app.windowIcon());
     KAboutData::setApplicationData(about);
+
+    // Configure MauiKit after KAboutData is set, so MauiApp can append
+    // framework build metadata to the existing About data.
+    MauiApp::instance()->setIconName("qrc:/assets/nuts-gui.svg");
 
     // 7. INITIALIZE LOGIC BEFORE ENGINE
     Nuts::NutsClient nutsClient;
