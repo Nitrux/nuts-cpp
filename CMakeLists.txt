@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.16)
 project(nuts VERSION 3.0.0 LANGUAGES CXX)
 
 set(QT_MAJOR_VERSION 6)
+set(REQUIRED_QT_VERSION 6.9)
+set(REQUIRED_KF6_VERSION 6.13.0)
+set(REQUIRED_MAUIKIT_VERSION 4.0.3)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -38,7 +41,7 @@ else()
 endif()
 
 # Find required packages
-find_package(ECM REQUIRED NO_MODULE)
+find_package(ECM ${REQUIRED_KF6_VERSION} REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${CMAKE_MODULE_PATH})
 
 include(KDEInstallDirs)
@@ -48,7 +51,7 @@ include(ECMFindQmlModule)
 include(ECMSetupVersion)
 include(FeatureSummary)
 
-find_package(Qt6 REQUIRED COMPONENTS
+find_package(Qt6 ${REQUIRED_QT_VERSION} REQUIRED COMPONENTS
     Core
     Quick
     Qml
@@ -58,14 +61,14 @@ find_package(Qt6 REQUIRED COMPONENTS
     Concurrent
 )
 
-find_package(KF6 REQUIRED COMPONENTS
+find_package(KF6 ${REQUIRED_KF6_VERSION} REQUIRED COMPONENTS
     CoreAddons
     I18n
     Notifications
     WindowSystem
 )
 
-find_package(MauiKit4 REQUIRED)
+find_package(MauiKit4 ${REQUIRED_MAUIKIT_VERSION} REQUIRED)
 
 ecm_find_qmlmodule(org.mauikit.controls 1.0)
 
