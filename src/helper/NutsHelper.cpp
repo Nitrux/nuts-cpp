@@ -594,13 +594,24 @@ QVariantMap NutsHelper::CheckForUpdates() {
     if (available) {
         QString targetVersion = m_updateManager->getMinTarget();
         QString updateUrl = m_updateManager->getUpdateUrl();
+        const QStringList archiveUrls = m_updateManager->getArchiveUrls();
 
         result["targetVersion"] = targetVersion;
         result["updateUrl"] = updateUrl;
         result["updateChecksum"] = m_updateManager->getUpdateChecksum();
+        result["otaSize"] = m_updateManager->getOtaSize();
 
         // Fetch file size (cached for this check)
-        qint64 fileSize = m_sysInterface->getRemoteFileSize(updateUrl);
+        qint64 fileSize = 0;
+        for (const QString& archiveUrl : archiveUrls) {
+            fileSize = m_sysInterface->getRemoteFileSize(archiveUrl);
+            if (fileSize > 0) {
+                break;
+            }
+        }
+        if (fileSize <= 0 && m_updateManager->getOtaSize() > 0) {
+            fileSize = m_updateManager->getOtaSize();
+        }
         result["updateSize"] = fileSize;
 
         // Build release notes URL
@@ -619,7 +630,11 @@ QVariantMap NutsHelper::CheckForUpdates() {
         }
 
         Logger::instance().info("Update available: " + targetVersion);
-        Logger::instance().info("Update size: " + QString::number(fileSize / (1024.0 * 1024.0), 'f', 2) + " MB");
+        if (fileSize > 0) {
+            Logger::instance().info("Update size: " + QString::number(fileSize / (1024.0 * 1024.0), 'f', 2) + " MB");
+        } else {
+            Logger::instance().warning("Update size could not be determined from HTTP headers");
+        }
     } else {
         Logger::instance().info("No update available");
     }

@@ -8,6 +8,7 @@
 #include "SystemInterface.h"
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QMap>
 
 namespace Nuts {
@@ -32,6 +33,14 @@ public:
     QString getMinTarget() const { return m_minTarget; }
     QString getUpdateUrl() const { return m_updateUrl; }
     QString getUpdateChecksum() const { return m_updateChecksum; }
+    qint64 getOtaSize() const { return m_otaSize; }
+    QStringList getArchiveUrls() const {
+        if (!m_mirrorList.isEmpty())
+            return m_mirrorList;
+        if (!m_updateUrl.isEmpty())
+            return QStringList{m_updateUrl};
+        return {};
+    }
 
 Q_SIGNALS:
     void downloadProgress(int percentage, qint64 bytesReceived, qint64 bytesTotal);
@@ -47,6 +56,7 @@ private:
     QString m_updateUrl;
     QString m_updateChecksum;
     QString m_otaChecksum;
+    qint64 m_otaSize{0};
     QStringList m_mirrorList;
     QMap<QString, QString> m_queryData;
 

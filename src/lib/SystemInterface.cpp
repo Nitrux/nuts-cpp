@@ -18,6 +18,56 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+namespace {
+qint64 parseContentRangeSize(const QByteArray& rawHeader) {
+    if (rawHeader.isEmpty()) {
+        return 0;
+    }
+
+    const QRegularExpression matchExpression(R"(bytes\s+\d+-\d+/(\d+|\*))");
+    const QRegularExpressionMatch match = matchExpression.match(QString::fromLatin1(rawHeader));
+    if (!match.hasMatch()) {
+        return 0;
+    }
+
+    const QString total = match.captured(1);
+    if (total == "*") {
+        return 0;
+    }
+
+    bool ok = false;
+    const qint64 size = total.toLongLong(&ok);
+    return ok ? size : 0;
+}
+
+qint64 extractRemoteSize(QNetworkReply* reply, bool preferContentRange) {
+    if (!reply || reply->error() != QNetworkReply::NoError) {
+        return 0;
+    }
+
+    if (preferContentRange) {
+        const qint64 rangeSize = parseContentRangeSize(reply->rawHeader("Content-Range"));
+        if (rangeSize > 0) {
+            return rangeSize;
+        }
+    }
+
+    const qint64 contentLength = reply->header(QNetworkRequest::ContentLengthHeader).toLongLong();
+    if (contentLength > 0) {
+        return contentLength;
+    }
+
+    if (!preferContentRange) {
+        const qint64 rangeSize = parseContentRangeSize(reply->rawHeader("Content-Range"));
+        if (rangeSize > 0) {
+            return rangeSize;
+        }
+    }
+
+    return 0;
+}
+}
+
 namespace Nuts {
 
 SystemInterface::SystemInterface(QObject* parent)
@@ -433,34 +483,53 @@ bool SystemInterface::verifyGPGSignature(const QString& dataFile, const QString&
 }
 
 qint64 SystemInterface::getRemoteFileSize(const QString& url) {
-    QNetworkAccessManager manager;
+    const QUrl qurl(url);
 
-    QUrl qurl(url);
-    QNetworkRequest request(qurl);
-    request.setTransferTimeout(10000);
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    auto probe = [&](bool useRangeRequest) -> qint64 {
+        QNetworkAccessManager manager;
+        QNetworkRequest request(qurl);
+        request.setTransferTimeout(10000);
+        request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
-    QNetworkReply* reply = manager.head(request);
+        if (useRangeRequest) {
+            request.setRawHeader("Range", "bytes=0-0");
+            request.setRawHeader("Accept-Encoding", "identity");
+        }
 
-    QEventLoop loop;
-    QTimer timeoutTimer;
-    timeoutTimer.setSingleShot(true);
-    timeoutTimer.setInterval(15000);
+        QNetworkReply* reply = useRangeRequest ? manager.get(request) : manager.head(request);
 
-    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
+        QEventLoop loop;
+        QTimer timeoutTimer;
+        timeoutTimer.setSingleShot(true);
+        timeoutTimer.setInterval(15000);
 
-    timeoutTimer.start();
-    loop.exec();
+        connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+        connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
 
-    qint64 fileSize = 0;
+        timeoutTimer.start();
+        loop.exec();
 
-    if (reply->error() == QNetworkReply::NoError && timeoutTimer.isActive()) {
-        fileSize = reply->header(QNetworkRequest::ContentLengthHeader).toLongLong();
+        qint64 fileSize = 0;
+
+        if (reply->error() == QNetworkReply::NoError && timeoutTimer.isActive()) {
+            fileSize = extractRemoteSize(reply, useRangeRequest);
+            if (useRangeRequest && fileSize <= 0) {
+                const qint64 contentLength = reply->header(QNetworkRequest::ContentLengthHeader).toLongLong();
+                if (contentLength > 1) {
+                    fileSize = contentLength;
+                }
+            }
+        }
+
+        timeoutTimer.stop();
+        reply->deleteLater();
+        return fileSize;
+    };
+
+    qint64 fileSize = probe(false);
+    if (fileSize <= 0) {
+        fileSize = probe(true);
     }
-
-    timeoutTimer.stop();
-    reply->deleteLater();
 
     return fileSize;
 }

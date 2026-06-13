@@ -196,6 +196,9 @@ void NutsClient::checkForUpdates() {
 
     // Get file size from Helper (already cached)
     qint64 bytes = result["updateSize"].toLongLong();
+    if (bytes <= 0) {
+        bytes = result["otaSize"].toLongLong();
+    }
     m_updateSize = QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 2) + " GB";
 
     // Get release notes URL from Helper

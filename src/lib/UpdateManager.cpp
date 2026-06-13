@@ -70,6 +70,7 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
 
     m_queryData.clear();
     m_mirrorList.clear();
+    m_otaSize = 0;
 
     // Collect raw mirror base URLs keyed by MIRROR{n}; assembled after
     // OTAFILE and OTABRANCH are known.
@@ -89,6 +90,14 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
             m_updateUrl = value;
         } else if (key == "UPDATE_CHECKSUM") {
             m_updateChecksum = value;
+        } else if (key == "OTASIZE") {
+            bool ok = false;
+            qint64 parsedSize = value.trimmed().toLongLong(&ok);
+            if (ok && parsedSize > 0) {
+                m_otaSize = parsedSize;
+            } else if (!value.trimmed().isEmpty()) {
+                Logger::instance().warning("Invalid OTASIZE value in query file: " + value);
+            }
         } else if (key.startsWith("MIRROR")) {
             QString base = value.trimmed();
             if (!base.isEmpty())
@@ -522,11 +531,12 @@ bool UpdateManager::checkDiskSpace() {
     // Estimate needed space: OTA size (from metadata) + 20% buffer
     qint64 estimatedOtaSize = 2LL * 1024 * 1024 * 1024; // Default 2GB if not known
 
-    // Try to get actual size from update URL if available
-    if (!m_updateUrl.isEmpty()) {
-        qint64 remoteSize = m_sysInterface->getRemoteFileSize(m_updateUrl);
+    // Try to get actual size from the archive URLs if available.
+    for (const QString& archiveUrl : getArchiveUrls()) {
+        qint64 remoteSize = m_sysInterface->getRemoteFileSize(archiveUrl);
         if (remoteSize > 0) {
             estimatedOtaSize = remoteSize;
+            break;
         }
     }
 
