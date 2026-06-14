@@ -15,7 +15,7 @@ class NUTS_EXPORT Config : public QObject {
 public:
     static Config& instance();
 
-    bool load(const QString& configPath = "/etc/nuts-cpp.conf");
+    bool load(const QString& configPath = QStringLiteral("/etc/nuts-cpp.conf"));
 
     QString downloadDir() const { return m_downloadDir; }
     QString squashfsDir() const { return m_squashfsDir; }
@@ -46,21 +46,21 @@ private:
     Config(const Config&) = delete;
     Config& operator=(const Config&) = delete;
 
-    QString m_downloadDir{"/home/.nuts/downloads"};
-    QString m_squashfsDir{"/home/.nuts/squashfs"};
-    QString m_backupDir{"/home/.nuts/backup"};
-    QString m_xfsDir{"/home/.nuts/xfs"};
-    QString m_logFile{"/var/log/nuts-cpp.log"};
-    QString m_branch{"main"};
-    QString m_workDir{"/var/cache/nuts-cpp"};
+    QString m_downloadDir{QStringLiteral("/home/.nuts/downloads")};
+    QString m_squashfsDir{QStringLiteral("/home/.nuts/squashfs")};
+    QString m_backupDir{QStringLiteral("/home/.nuts/backup")};
+    QString m_xfsDir{QStringLiteral("/home/.nuts/xfs")};
+    QString m_logFile{QStringLiteral("/var/log/nuts-cpp.log")};
+    QString m_branch{QStringLiteral("main")};
+    QString m_workDir{QStringLiteral("/var/cache/nuts-cpp")};
 
     // Centralized URL configuration
-    QString m_queryFileUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts-cpp-components/refs/heads/{branch}/query/nuts-cpp-query.info"};
-    QString m_componentBaseUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts-cpp-components/refs/heads/{branch}/components/"};
-    QString m_osReleaseUrl{"https://raw.githubusercontent.com/Nitrux/nitrux-base-files/refs/heads/{branch}/etc/os-release"};
-    QString m_releaseNotesUrlTemplate{"https://raw.githubusercontent.com/Nitrux/nuts-cpp-components/refs/heads/{branch}/summary/{version}/nuts-cpp-summary.md"};
-    QString m_connectivityCheckUrl{"http://1.1.1.1"};
-    QString m_githubConnectivityCheckUrl{"https://raw.githubusercontent.com/Nitrux/storage/refs/heads/master/Other/sample1.txt"};
+    QString m_queryFileUrlTemplate{QStringLiteral("https://raw.githubusercontent.com/Nitrux/nuts-cpp-components/refs/heads/{branch}/query/nuts-cpp-query.info")};
+    QString m_componentBaseUrlTemplate{QStringLiteral("https://raw.githubusercontent.com/Nitrux/nuts-cpp-components/refs/heads/{branch}/components/")};
+    QString m_osReleaseUrl{QStringLiteral("https://raw.githubusercontent.com/Nitrux/nitrux-base-files/refs/heads/{branch}/etc/os-release")};
+    QString m_releaseNotesUrlTemplate{QStringLiteral("https://raw.githubusercontent.com/Nitrux/nuts-cpp-components/refs/heads/{branch}/summary/{version}/nuts-cpp-summary.md")};
+    QString m_connectivityCheckUrl{QStringLiteral("http://1.1.1.1")};
+    QString m_githubConnectivityCheckUrl{QStringLiteral("https://raw.githubusercontent.com/Nitrux/storage/refs/heads/master/Other/sample1.txt")};
 };
 
 } // namespace Nuts

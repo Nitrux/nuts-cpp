@@ -8,10 +8,10 @@
 
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
-    app.setOrganizationName("Nitrux");
-    app.setOrganizationDomain("nxos.org");
-    app.setApplicationName("nuts-helper");
-    app.setApplicationVersion("3.0.0");
+    app.setOrganizationName(QStringLiteral("Nitrux"));
+    app.setOrganizationDomain(QStringLiteral("nxos.org"));
+    app.setApplicationName(QStringLiteral("nuts-helper"));
+    app.setApplicationVersion(QStringLiteral("3.0.0"));
 
     // Check if running as root
     if (getuid() != 0) {
@@ -27,16 +27,16 @@ int main(int argc, char* argv[]) {
     // Register on D-Bus
     QDBusConnection bus = QDBusConnection::systemBus();
 
-    if (!bus.registerService("org.nxos.nuts")) {
-        Nuts::Logger::instance().error("Failed to register D-Bus service: " +
+    if (!bus.registerService(QStringLiteral("org.nxos.nuts"))) {
+        Nuts::Logger::instance().error(QStringLiteral("Failed to register D-Bus service: ") +
                                        bus.lastError().message());
         return 1;
     }
 
-    if (!bus.registerObject("/org/nxos/nuts", &helper,
+    if (!bus.registerObject(QStringLiteral("/org/nxos/nuts"), &helper,
                            QDBusConnection::ExportAllSlots |
                            QDBusConnection::ExportAllSignals)) {
-        Nuts::Logger::instance().error("Failed to register D-Bus object: " +
+        Nuts::Logger::instance().error(QStringLiteral("Failed to register D-Bus object: ") +
                                        bus.lastError().message());
         return 1;
     }

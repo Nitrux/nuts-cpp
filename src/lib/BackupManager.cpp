@@ -16,7 +16,7 @@ BackupManager::BackupManager(SystemInterface* sysInterface, QObject* parent)
 }
 
 bool BackupManager::createBackup(const QString& partition, const QString& outputPath) {
-    Logger::instance().info("Creating XFS backup of " + partition);
+    Logger::instance().info(QStringLiteral("Creating XFS backup of ") + partition);
 
     // Validate output path to prevent path traversal (backup files go into xfsDir)
     QString xfsDir = Config::instance().xfsDir();
@@ -25,15 +25,15 @@ bool BackupManager::createBackup(const QString& partition, const QString& output
         return false;
     }
 
-    Q_EMIT backupProgress(0, "Starting backup...");
+    Q_EMIT backupProgress(0, QStringLiteral("Starting backup..."));
 
     if (!executeXfsdump(partition, outputPath)) {
         Logger::instance().error("XFS backup failed");
         return false;
     }
 
-    Q_EMIT backupProgress(100, "Backup completed");
-    Logger::instance().success("XFS backup created: " + outputPath);
+    Q_EMIT backupProgress(100, QStringLiteral("Backup completed"));
+    Logger::instance().success(QStringLiteral("XFS backup created: ") + outputPath);
 
     return true;
 }
@@ -43,15 +43,15 @@ bool BackupManager::executeXfsdump(const QString& device, const QString& outputF
     process.setProcessChannelMode(QProcess::MergedChannels);
 
     QStringList args = {
-        "-l0",  // Level 0 (full backup)
-        "-L", "Nitrux_Update_Tool_System-XFS_Backup",
-        "-M", "NX_BAK-Vol-1",
-        "-f", outputFile,
+        QStringLiteral("-l0"),  // Level 0 (full backup)
+        QStringLiteral("-L"), QStringLiteral("Nitrux_Update_Tool_System-XFS_Backup"),
+        QStringLiteral("-M"), QStringLiteral("NX_BAK-Vol-1"),
+        QStringLiteral("-f"), outputFile,
         device
     };
 
     // SECURITY: Use absolute path to prevent PATH injection
-    process.start("/usr/sbin/xfsdump", args);
+    process.start(QStringLiteral("/usr/sbin/xfsdump"), args);
 
     if (!process.waitForStarted()) {
         Logger::instance().error("Failed to start xfsdump");
@@ -77,7 +77,7 @@ bool BackupManager::executeXfsdump(const QString& device, const QString& outputF
 }
 
 bool BackupManager::compressBackup(const QString& inputPath, const QString& outputPath) {
-    Logger::instance().info("Compressing backup with zstd");
+    Logger::instance().info(QStringLiteral("Compressing backup with zstd"));
 
     // Validate paths to prevent path traversal
     QString backupDir = Config::instance().backupDir();
@@ -106,7 +106,7 @@ bool BackupManager::compressBackup(const QString& inputPath, const QString& outp
     }
 
     Q_EMIT compressionProgress(100);
-    Logger::instance().success("Backup compressed: " + outputPath);
+    Logger::instance().success(QStringLiteral("Backup compressed: ") + outputPath);
 
     // Remove uncompressed backup atomically (avoid TOCTOU)
     QFile inputFile(inputPath);
@@ -116,7 +116,7 @@ bool BackupManager::compressBackup(const QString& inputPath, const QString& outp
     }
 
     // Create checksum
-    QString checksumPath = Config::instance().xfsDir() + "/xfs-backup.md5sum";
+    QString checksumPath = Config::instance().xfsDir()  + QStringLiteral("/xfs-backup.md5sum");
     if (!createChecksum(outputPath, checksumPath)) {
         Logger::instance().warning("Failed to create checksum file");
     }
@@ -126,17 +126,17 @@ bool BackupManager::compressBackup(const QString& inputPath, const QString& outp
 
 bool BackupManager::executeZstdCompress(const QString& inputFile, const QString& outputFile) {
     int threads = QThread::idealThreadCount();
-    Logger::instance().info(QString("Using %1 threads for compression").arg(threads));
+    Logger::instance().info(QStringLiteral("Using %1 threads for compression").arg(threads));
 
     QProcess process;
     QStringList args = {
-        QString("-T%1").arg(threads),
-        "-3",  // Compression level
+        QStringLiteral("-T%1").arg(threads),
+        QStringLiteral("-3"),  // Compression level
         inputFile,
-        "-o", outputFile
+        QStringLiteral("-o"), outputFile
     };
 
-    process.start("/usr/bin/zstd", args);
+    process.start(QStringLiteral("/usr/bin/zstd"), args);
 
     if (!process.waitForStarted()) {
         Logger::instance().error("Failed to start zstd");
@@ -149,7 +149,7 @@ bool BackupManager::executeZstdCompress(const QString& inputFile, const QString&
 }
 
 bool BackupManager::restoreBackup(const QString& backupPath, const QString& targetMount) {
-    Logger::instance().info("Restoring backup to " + targetMount);
+    Logger::instance().info(QStringLiteral("Restoring backup to ") + targetMount);
 
     // Validate backup path to prevent path traversal.
     // Allow two modes:
@@ -157,18 +157,18 @@ bool BackupManager::restoreBackup(const QString& backupPath, const QString& targ
     // - Rescue: /media/nitrux/NX_HOME/.nuts/xfs/xfs-backup.xfs (Live session)
     QString xfsDir = Config::instance().xfsDir();
     if (!m_sysInterface->validatePath(backupPath, xfsDir, /*logError=*/false) &&
-        !m_sysInterface->validatePath(backupPath, "/media", /*logError=*/false)) {
-        Logger::instance().error("SECURITY: Invalid backup path for restoration: " + backupPath);
-        Logger::instance().error("Path must be under " + xfsDir + " or /media");
+        !m_sysInterface->validatePath(backupPath, QStringLiteral("/media"), /*logError=*/false)) {
+        Logger::instance().error(QStringLiteral("SECURITY: Invalid backup path for restoration: ") + backupPath);
+        Logger::instance().error(QStringLiteral("Path must be under ") + xfsDir  + QStringLiteral(" or /media"));
         return false;
     }
 
     // Validate target mount point (should be under /mnt or /media for rescue mode).
     // - Normal: /mnt/... (manual restore)
     // - Rescue: /media/nitrux/NX_ROOT (Live session mount point)
-    if (!m_sysInterface->validatePath(targetMount, "/mnt", /*logError=*/false) &&
-        !m_sysInterface->validatePath(targetMount, "/media", /*logError=*/false)) {
-        Logger::instance().error("SECURITY: Invalid target mount point for restoration: " + targetMount);
+    if (!m_sysInterface->validatePath(targetMount, QStringLiteral("/mnt"), /*logError=*/false) &&
+        !m_sysInterface->validatePath(targetMount, QStringLiteral("/media"), /*logError=*/false)) {
+        Logger::instance().error(QStringLiteral("SECURITY: Invalid target mount point for restoration: ") + targetMount);
         Logger::instance().error("Path must be under /mnt or /media");
         return false;
     }
@@ -177,7 +177,7 @@ bool BackupManager::restoreBackup(const QString& backupPath, const QString& targ
 
     // First, wipe the target directory
     QProcess wipProcess;
-    wipProcess.start("/usr/bin/find", {targetMount, "-mindepth", "1", "-delete"});
+    wipProcess.start(QStringLiteral("/usr/bin/find"), QStringList{targetMount, QStringLiteral("-mindepth"), QStringLiteral("1"), QStringLiteral("-delete")});
     wipProcess.waitForFinished(-1);
 
     if (!executeXfsrestore(backupPath, targetMount)) {
@@ -196,11 +196,11 @@ bool BackupManager::executeXfsrestore(const QString& backupFile, const QString& 
     process.setProcessChannelMode(QProcess::MergedChannels);
 
     QStringList args = {
-        "-f", backupFile,
+        QStringLiteral("-f"), backupFile,
         targetMount
     };
 
-    process.start("/usr/sbin/xfsrestore", args);
+    process.start(QStringLiteral("/usr/sbin/xfsrestore"), args);
 
     if (!process.waitForStarted()) {
         Logger::instance().error("Failed to start xfsrestore");
@@ -242,13 +242,13 @@ bool BackupManager::decompressBackup(const QString& compressedPath, const QStrin
 bool BackupManager::executeZstdDecompress(const QString& inputFile, const QString& outputFile) {
     QProcess process;
     QStringList args = {
-        "-d",
-        "-f",
-        "-o", outputFile,
+        QStringLiteral("-d"),
+        QStringLiteral("-f"),
+        QStringLiteral("-o"), outputFile,
         inputFile
     };
 
-    process.start("/usr/bin/zstd", args);
+    process.start(QStringLiteral("/usr/bin/zstd"), args);
 
     if (!process.waitForStarted()) {
         Logger::instance().error("Failed to start zstd");
@@ -269,7 +269,7 @@ BackupInfo BackupManager::getBackupInfo(const QString& backupPath) {
         QFileInfo fileInfo(backupPath);
         info.size = fileInfo.size();
 
-        QString checksumPath = Config::instance().xfsDir() + "/xfs-backup.md5sum";
+        QString checksumPath = Config::instance().xfsDir()  + QStringLiteral("/xfs-backup.md5sum");
         info.valid = verifyBackup(backupPath, checksumPath);
 
         if (info.valid) {
@@ -286,7 +286,7 @@ bool BackupManager::backupExists(const QString& backupPath) {
 
 bool BackupManager::verifyBackup(const QString& backupPath, const QString& checksumPath) {
     if (!QFile::exists(checksumPath)) {
-        Logger::instance().warning("Checksum file not found: " + checksumPath);
+        Logger::instance().warning(QStringLiteral("Checksum file not found: ") + checksumPath);
         return false;
     }
 
@@ -306,7 +306,7 @@ bool BackupManager::createChecksum(const QString& filePath, const QString& check
 
     QFile file(checksumPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        Logger::instance().error("Failed to create checksum file: " + checksumPath);
+        Logger::instance().error(QStringLiteral("Failed to create checksum file: ") + checksumPath);
         return false;
     }
 
@@ -314,14 +314,14 @@ bool BackupManager::createChecksum(const QString& filePath, const QString& check
     out << checksum << "  " << QFileInfo(filePath).fileName() << "\n";
     file.close();
 
-    Logger::instance().info("Checksum file created: " + checksumPath);
+    Logger::instance().info(QStringLiteral("Checksum file created: ") + checksumPath);
     return true;
 }
 
 QString BackupManager::readChecksum(const QString& checksumPath) {
     QFile file(checksumPath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        Logger::instance().error("Failed to read checksum file: " + checksumPath);
+        Logger::instance().error(QStringLiteral("Failed to read checksum file: ") + checksumPath);
         return QString();
     }
 
@@ -330,7 +330,7 @@ QString BackupManager::readChecksum(const QString& checksumPath) {
     file.close();
 
     // Parse checksum from "checksum  filename" format
-    QStringList parts = line.split(QRegularExpression("\\s+"));
+    QStringList parts = line.split(QRegularExpression(QStringLiteral("\\s+")));
     if (parts.isEmpty()) {
         return QString();
     }

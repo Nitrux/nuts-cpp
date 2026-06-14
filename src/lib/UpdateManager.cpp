@@ -18,11 +18,11 @@ UpdateManager::UpdateManager(SystemInterface* sysInterface, QObject* parent)
 
 bool UpdateManager::downloadQueryFile(const QString& /*branch*/) {
     QString url = Config::instance().queryFileUrl();
-    QString sigUrl = url + ".sig";
+    QString sigUrl = url  + QStringLiteral(".sig");
 
     QString workDir = Config::instance().workDir();
-    QString destination = workDir + "/nuts-cpp-query.info";
-    QString sigDestination = workDir + "/nuts-cpp-query.info.sig";
+    QString destination = workDir  + QStringLiteral("/nuts-cpp-query.info");
+    QString sigDestination = workDir  + QStringLiteral("/nuts-cpp-query.info.sig");
 
     // Ensure secure work directory exists
     if (!m_sysInterface->directoryExists(workDir)) {
@@ -80,25 +80,25 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
         QString value = settings.value(key).toString();
         m_queryData[key] = value;
 
-        if (key == "MINTARGET") {
+        if (key == QStringLiteral("MINTARGET")) {
             m_minTarget = value;
-        } else if (key == "OTAFILE") {
+        } else if (key == QStringLiteral("OTAFILE")) {
             m_otaFile = value.trimmed();
-        } else if (key == "OTABRANCH") {
+        } else if (key == QStringLiteral("OTABRANCH")) {
             m_otaBranch = value.trimmed();
-        } else if (key == "UPDATE_URL") {
+        } else if (key == QStringLiteral("UPDATE_URL")) {
             m_updateUrl = value;
-        } else if (key == "UPDATE_CHECKSUM") {
+        } else if (key == QStringLiteral("UPDATE_CHECKSUM")) {
             m_updateChecksum = value;
-        } else if (key == "OTASIZE") {
+        } else if (key == QStringLiteral("OTASIZE")) {
             bool ok = false;
             qint64 parsedSize = value.trimmed().toLongLong(&ok);
             if (ok && parsedSize > 0) {
                 m_otaSize = parsedSize;
             } else if (!value.trimmed().isEmpty()) {
-                Logger::instance().warning("Invalid OTASIZE value in query file: " + value);
+                Logger::instance().warning(QStringLiteral("Invalid OTASIZE value in query file: ") + value);
             }
-        } else if (key.startsWith("MIRROR")) {
+        } else if (key.startsWith(QStringLiteral("MIRROR"))) {
             QString base = value.trimmed();
             if (!base.isEmpty())
                 mirrorBases.append(base);
@@ -115,10 +115,10 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
         return false;
     }
 
-    // Assemble full mirror URLs: base + OTABRANCH + "/" + OTAFILE
+    // Assemble full mirror URLs: base + OTABRANCH + QStringLiteral("/") + OTAFILE
     for (const QString& base : mirrorBases) {
-        QString normalised = base.endsWith('/') ? base : base + '/';
-        QString url = normalised + m_otaBranch + "/" + m_otaFile;
+        QString normalised = base.endsWith(QStringLiteral("/")) ? base : base + QStringLiteral("/");
+        QString url = normalised + m_otaBranch + QStringLiteral("/") + m_otaFile;
         if (!m_mirrorList.contains(url))
             m_mirrorList.append(url);
     }
@@ -133,23 +133,23 @@ bool UpdateManager::parseQueryFile(const QString& filePath) {
         return false;
     }
 
-    m_otaChecksum = m_queryData.value("OTASUM");
+    m_otaChecksum = m_queryData.value(QStringLiteral("OTASUM"));
     if (m_otaChecksum.isEmpty()) {
         m_otaChecksum = m_updateChecksum;
     }
 
     // Ensure external tool checksums are present
-    if (m_queryData.value("DPKG_AI_SUM").isEmpty()) {
+    if (m_queryData.value(QStringLiteral("DPKG_AI_SUM")).isEmpty()) {
         Logger::instance().error("CRITICAL: DPKG_AI_SUM missing from metadata. Cannot verify update tools.");
         return false;
     }
 
-    if (m_queryData.value("VAR_LIB_SUM").isEmpty()) {
+    if (m_queryData.value(QStringLiteral("VAR_LIB_SUM")).isEmpty()) {
         Logger::instance().error("CRITICAL: VAR_LIB_SUM missing from metadata. Cannot verify package database.");
         return false;
     }
 
-    if (m_queryData.value("NUTS_CCU_CHECKSUM").isEmpty()) {
+    if (m_queryData.value(QStringLiteral("NUTS_CCU_CHECKSUM")).isEmpty()) {
         Logger::instance().error("CRITICAL: NUTS_CCU_CHECKSUM missing - refusing to proceed");
         return false;
     }
@@ -164,7 +164,7 @@ bool UpdateManager::isUpdateAvailable(const QString& currentVersion) {
     // Check if an update was recently applied but system hasn't rebooted yet.
     // This prevents re-running the update process when /etc/lsb-release hasn't
     // been updated on the read-only root filesystem.
-    const QString rebootMarkerPath = "/var/run/nuts-cpp-pending-reboot";
+    const QString rebootMarkerPath = QStringLiteral("/var/run/nuts-cpp-pending-reboot");
     QFile rebootMarkerFile(rebootMarkerPath);
     if (rebootMarkerFile.exists() && rebootMarkerFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QString appliedVersion = QString::fromUtf8(rebootMarkerFile.readAll()).trimmed();
@@ -173,8 +173,7 @@ bool UpdateManager::isUpdateAvailable(const QString& currentVersion) {
         // If the marker indicates we've already applied this target version,
         // don't show the update as available (reboot pending)
         if (!appliedVersion.isEmpty() && appliedVersion == m_minTarget) {
-            Logger::instance().info("Update to version " + m_minTarget +
-                                  " already applied. Reboot required to complete.");
+            Logger::instance().info(QStringLiteral("Update to version ") + m_minTarget  + QStringLiteral(" already applied. Reboot required to complete."));
             return false;
         }
     }
@@ -190,17 +189,17 @@ int UpdateManager::compareVersions(const QString& version1, const QString& versi
     // Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
 
     // Extract numeric part before any space (ignore build metadata)
-    QString v1 = version1.split(' ').first();
-    QString v2 = version2.split(' ').first();
+    QString v1 = version1.split(QStringLiteral(" ")).first();
+    QString v2 = version2.split(QStringLiteral(" ")).first();
 
     // Split by dots
-    QStringList parts1 = v1.split('.');
-    QStringList parts2 = v2.split('.');
+    QStringList parts1 = v1.split(QStringLiteral("."));
+    QStringList parts2 = v2.split(QStringLiteral("."));
 
     // Pad to same length
     int maxLen = qMax(parts1.size(), parts2.size());
-    while (parts1.size() < maxLen) parts1.append("0");
-    while (parts2.size() < maxLen) parts2.append("0");
+    while (parts1.size() < maxLen) parts1.append(QStringLiteral("0"));
+    while (parts2.size() < maxLen) parts2.append(QStringLiteral("0"));
 
     // Compare each component numerically
     for (int i = 0; i < maxLen; ++i) {
@@ -230,17 +229,17 @@ bool UpdateManager::applyUpdate() {
     Logger::instance().info("=== Starting System Update Process ===");
 
     // File paths used throughout this function
-    const QString lockPath = "/var/run/nuts-cpp.lock";
-    const QString rebootMarkerPath = "/var/run/nuts-cpp-pending-reboot";
+    const QString lockPath = QStringLiteral("/var/run/nuts-cpp.lock");
+    const QString rebootMarkerPath = QStringLiteral("/var/run/nuts-cpp-pending-reboot");
 
     // Acquire lock file to prevent concurrent update runs.
     QFile lockFile(lockPath);
     if (lockFile.exists()) {
-        Logger::instance().error("Another instance of nuts-cpp is already running (" + lockPath + ")");
+        Logger::instance().error(QStringLiteral("Another instance of nuts-cpp is already running (") + lockPath  + QStringLiteral(")"));
         return false;
     }
     if (!lockFile.open(QIODevice::WriteOnly)) {
-        Logger::instance().error("Failed to create lock file: " + lockPath);
+        Logger::instance().error(QStringLiteral("Failed to create lock file: ") + lockPath);
         return false;
     }
     lockFile.close();
@@ -254,7 +253,7 @@ bool UpdateManager::applyUpdate() {
 
     // --- PRE-CHROOT PHASE (runs on host) ---
 
-    Q_EMIT updateProgress(5, "Checking disk space");
+    Q_EMIT updateProgress(5, QStringLiteral("Checking disk space"));
     Logger::instance().info("--- Step: Checking disk space ---");
     if (!checkDiskSpace()) {
         Logger::instance().error("Insufficient disk space for update");
@@ -268,33 +267,33 @@ bool UpdateManager::applyUpdate() {
     // 2. Duplicate label detection (prevent updating wrong drive)
     // 3. Pre-mount cleanup (handle stale mounts from interrupted operations)
 
-    Q_EMIT updateProgress(6, "Verifying system partitions");
+    Q_EMIT updateProgress(6, QStringLiteral("Verifying system partitions"));
     Logger::instance().info("--- Step: Verifying system partitions ---");
 
     // Safety check 1: Verify root partition filesystem type
     Logger::instance().info("Searching for NX_ROOT partition");
     QString output, error;
-    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_ROOT"}, output, error)) {
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/findfs"), QStringList{QStringLiteral("LABEL=NX_ROOT")}, output, error)) {
         Logger::instance().error("Failed to find NX_ROOT partition");
-        Logger::instance().error("findfs error: " + error);
+        Logger::instance().error(QStringLiteral("findfs error: ") + error);
         QFile::remove(lockPath);
         return false;
     }
     QString rootPartition = output.trimmed();
-    Logger::instance().info("Found NX_ROOT: " + rootPartition);
+    Logger::instance().info(QStringLiteral("Found NX_ROOT: ") + rootPartition);
 
     Logger::instance().info("Verifying NX_ROOT filesystem type");
-    if (!m_sysInterface->executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "TYPE", rootPartition}, output, error)) {
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/blkid"), QStringList{QStringLiteral("-o"), QStringLiteral("value"), QStringLiteral("-s"), QStringLiteral("TYPE"), rootPartition}, output, error)) {
         Logger::instance().error("Failed to determine filesystem type of NX_ROOT");
-        Logger::instance().error("blkid error: " + error);
+        Logger::instance().error(QStringLiteral("blkid error: ") + error);
         QFile::remove(lockPath);
         return false;
     }
     QString rootFilesystem = output.trimmed();
-    Logger::instance().info("NX_ROOT filesystem: " + rootFilesystem);
+    Logger::instance().info(QStringLiteral("NX_ROOT filesystem: ") + rootFilesystem);
 
-    if (rootFilesystem != "xfs") {
-        Logger::instance().error("The filesystem of NX_ROOT is " + rootFilesystem + ", not XFS");
+    if (rootFilesystem != QStringLiteral("xfs")) {
+        Logger::instance().error(QStringLiteral("The filesystem of NX_ROOT is ") + rootFilesystem  + QStringLiteral(", not XFS"));
         Logger::instance().error("The backup/restore system requires an XFS root partition");
         QFile::remove(lockPath);
         return false;
@@ -303,18 +302,18 @@ bool UpdateManager::applyUpdate() {
 
     // Safety check 2: Check for duplicate NX_ROOT labels
     Logger::instance().info("Checking for duplicate NX_ROOT labels");
-    if (!m_sysInterface->executeCommand("/usr/sbin/blkid", {"-o", "device", "-t", "LABEL=NX_ROOT"}, output, error)) {
-        Logger::instance().warning("Failed to enumerate NX_ROOT labels (blkid error: " + error + "), proceeding with caution");
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/blkid"), QStringList{QStringLiteral("-o"), QStringLiteral("device"), QStringLiteral("-t"), QStringLiteral("LABEL=NX_ROOT")}, output, error)) {
+        Logger::instance().warning(QStringLiteral("Failed to enumerate NX_ROOT labels (blkid error: ") + error  + QStringLiteral("), proceeding with caution"));
     } else {
-        QStringList devices = output.trimmed().split('\n', Qt::SkipEmptyParts);
+        QStringList devices = output.trimmed().split(QStringLiteral("\n"), Qt::SkipEmptyParts);
         int labelCount = devices.size();
-        Logger::instance().info(QString("Found %1 device(s) with NX_ROOT label").arg(labelCount));
+        Logger::instance().info(QStringLiteral("Found %1 device(s) with NX_ROOT label").arg(labelCount));
 
         if (labelCount > 1) {
-            QString deviceList = devices.join(", ");
+            QString deviceList = devices.join(QStringLiteral(", "));
             Logger::instance().error("CRITICAL: Duplicate NX_ROOT partition labels detected!");
-            Logger::instance().error("We found " + QString::number(labelCount) +
-                                    " devices with the label 'NX_ROOT': " + deviceList);
+            Logger::instance().error(QStringLiteral("We found ") + QString::number(labelCount) +
+                                    QStringLiteral(" devices with the label 'NX_ROOT': ") + deviceList);
             Logger::instance().error("Please disconnect the external/secondary drive before updating");
             QFile::remove(lockPath);
             return false;
@@ -325,22 +324,22 @@ bool UpdateManager::applyUpdate() {
     // Safety check 3: Verify NX_HOME and NX_VAR_LIB exist and check for stale mounts
     // The agent will mount these inside the chroot, but we verify them on the host first.
     Logger::instance().info("Verifying NX_HOME partition exists");
-    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_HOME"}, output, error)) {
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/findfs"), QStringList{QStringLiteral("LABEL=NX_HOME")}, output, error)) {
         Logger::instance().error("Failed to find NX_HOME partition");
-        Logger::instance().error("findfs error: " + error);
+        Logger::instance().error(QStringLiteral("findfs error: ") + error);
         QFile::remove(lockPath);
         return false;
     }
-    Logger::instance().info("Found NX_HOME: " + output.trimmed());
+    Logger::instance().info(QStringLiteral("Found NX_HOME: ") + output.trimmed());
 
     Logger::instance().info("Verifying NX_VAR_LIB partition exists");
-    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_VAR_LIB"}, output, error)) {
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/findfs"), QStringList{QStringLiteral("LABEL=NX_VAR_LIB")}, output, error)) {
         Logger::instance().error("Failed to find NX_VAR_LIB partition");
-        Logger::instance().error("findfs error: " + error);
+        Logger::instance().error(QStringLiteral("findfs error: ") + error);
         QFile::remove(lockPath);
         return false;
     }
-    Logger::instance().info("Found NX_VAR_LIB: " + output.trimmed());
+    Logger::instance().info(QStringLiteral("Found NX_VAR_LIB: ") + output.trimmed());
 
     Logger::instance().success("All partition safety checks passed");
 
@@ -348,15 +347,15 @@ bool UpdateManager::applyUpdate() {
     // The chroot lower layer is a snapshot of the read-only root; it cannot
     // reliably access host kernel state such as /proc/driver/nvidia after
     // session boundaries.  The result is passed to the agent via the param file.
-    bool hasNvidia = QDir("/proc/driver/nvidia").exists();
+    bool hasNvidia = QDir(QStringLiteral("/proc/driver/nvidia")).exists();
     if (!hasNvidia) {
         QString out, err;
-        m_sysInterface->executeCommand("/usr/bin/lspci", {}, out, err);
-        if (out.contains("NVIDIA", Qt::CaseInsensitive))
+        m_sysInterface->executeCommand(QStringLiteral("/usr/bin/lspci"), QStringList{}, out, err);
+        if (out.contains(QStringLiteral("NVIDIA"), Qt::CaseInsensitive))
             hasNvidia = true;
     }
-    Logger::instance().info(QString("NVIDIA hardware detected on host: %1")
-                            .arg(hasNvidia ? "yes" : "no"));
+    Logger::instance().info(QStringLiteral("NVIDIA hardware detected on host: %1")
+                            .arg(hasNvidia ? QStringLiteral("yes") : QStringLiteral("no")));
 
     // Write the parameter file that nuts-agent reads when it starts.
     //
@@ -366,7 +365,7 @@ bool UpdateManager::applyUpdate() {
     // the overlay tmpfs upperdir and is NOT visible inside the chroot.
     // /run IS bind-mounted, so /run/nuts-agent-params.ini is reachable from
     // both the host (writer) and the agent (reader).
-    Q_EMIT updateProgress(7, "Preparing agent parameters");
+    Q_EMIT updateProgress(7, QStringLiteral("Preparing agent parameters"));
     const QString paramFile = QStringLiteral("/run/nuts-agent-params.ini");
     QFile::remove(paramFile);  // Remove any stale file from a previous run.
 
@@ -381,12 +380,12 @@ bool UpdateManager::applyUpdate() {
     // cleanup runs inside one persistent nuts-agent process.  Mounts created
     // by the agent remain alive for its entire lifetime — this is the fix
     // for the "session amnesia" problem.
-    Q_EMIT updateProgress(10, "Entering update environment");
+    Q_EMIT updateProgress(10, QStringLiteral("Entering update environment"));
     Logger::instance().info("--- Launching nuts-agent in chroot (single session) ---");
 
     QString agentOutput, agentError;
     bool agentOk = m_sysInterface->executeInOverlayAgent(
-        {"/usr/sbin/nuts-agent", paramFile},
+        QStringList{QStringLiteral("/usr/sbin/nuts-agent"), paramFile},
         agentOutput,
         agentError);
 
@@ -399,7 +398,7 @@ bool UpdateManager::applyUpdate() {
     if (!agentOk) {
         Logger::instance().error("nuts-agent exited with failure");
         if (!agentError.trimmed().isEmpty())
-            Logger::instance().error("Agent stderr: " + agentError.trimmed());
+            Logger::instance().error(QStringLiteral("Agent stderr: ") + agentError.trimmed());
         QFile::remove(lockPath);
         return false;
     }
@@ -413,12 +412,12 @@ bool UpdateManager::applyUpdate() {
     if (rebootMarkerFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
         rebootMarkerFile.write(m_minTarget.toUtf8());
         rebootMarkerFile.close();
-        Logger::instance().info("Created reboot marker for version: " + m_minTarget);
+        Logger::instance().info(QStringLiteral("Created reboot marker for version: ") + m_minTarget);
     } else {
         Logger::instance().warning("Failed to create reboot marker file (non-critical)");
     }
 
-    Q_EMIT updateProgress(100, "Update completed successfully");
+    Q_EMIT updateProgress(100, QStringLiteral("Update completed successfully"));
     Logger::instance().success("=== System updated successfully. Please reboot. ===");
     return true;
 }
@@ -429,7 +428,7 @@ bool UpdateManager::applyUpdate() {
 
 bool UpdateManager::writeAgentParams(const QString& filePath, bool hasNvidia) const {
     // Build the URLs that the agent needs.
-    QString varLibUrl = QString(
+    QString varLibUrl = QStringLiteral(
         "https://raw.githubusercontent.com/Nitrux/storage/master/Other/var-lib-dpkg-%1.tar.xz")
         .arg(m_minTarget);
 
@@ -440,30 +439,30 @@ bool UpdateManager::writeAgentParams(const QString& filePath, bool hasNvidia) co
         "dpkg-1.22.21-x86_64.AppImage");
 
     QString baseUrl = Config::instance().componentBaseUrl();
-    if (!baseUrl.endsWith('/'))
-        baseUrl += '/';
-    const QString ccuUrl = baseUrl + "nuts-cpp-ccu";
+    if (!baseUrl.endsWith(QStringLiteral("/")))
+        baseUrl += QStringLiteral("/");
+    const QString ccuUrl = baseUrl + QStringLiteral("nuts-cpp-ccu");
 
     QSettings s(filePath, QSettings::IniFormat);
-    s.beginGroup("Agent");
-    s.setValue("MINTARGET",           m_minTarget);
-    s.setValue("OTA_CHECKSUM",        m_otaChecksum);
-    s.setValue("DPKG_AI_URL",         dpkgAiUrl);
-    s.setValue("DPKG_AI_SUM",         m_queryData.value("DPKG_AI_SUM"));
-    s.setValue("VAR_LIB_URL",         varLibUrl);
-    s.setValue("VAR_LIB_SUM",         m_queryData.value("VAR_LIB_SUM"));
-    s.setValue("NUTS_CCU_URL",        ccuUrl);
-    s.setValue("NUTS_CCU_CHECKSUM",   m_queryData.value("NUTS_CCU_CHECKSUM"));
-    s.setValue("DOWNLOAD_DIR",        Config::instance().downloadDir());
-    s.setValue("SQUASHFS_DIR",        Config::instance().squashfsDir());
-    s.setValue("HAS_NVIDIA",          hasNvidia);
+    s.beginGroup(QStringLiteral("Agent"));
+    s.setValue(QStringLiteral("MINTARGET"),           m_minTarget);
+    s.setValue(QStringLiteral("OTA_CHECKSUM"),        m_otaChecksum);
+    s.setValue(QStringLiteral("DPKG_AI_URL"),         dpkgAiUrl);
+    s.setValue(QStringLiteral("DPKG_AI_SUM"),         m_queryData.value(QStringLiteral("DPKG_AI_SUM")));
+    s.setValue(QStringLiteral("VAR_LIB_URL"),         varLibUrl);
+    s.setValue(QStringLiteral("VAR_LIB_SUM"),         m_queryData.value(QStringLiteral("VAR_LIB_SUM")));
+    s.setValue(QStringLiteral("NUTS_CCU_URL"),        ccuUrl);
+    s.setValue(QStringLiteral("NUTS_CCU_CHECKSUM"),   m_queryData.value(QStringLiteral("NUTS_CCU_CHECKSUM")));
+    s.setValue(QStringLiteral("DOWNLOAD_DIR"),        Config::instance().downloadDir());
+    s.setValue(QStringLiteral("SQUASHFS_DIR"),        Config::instance().squashfsDir());
+    s.setValue(QStringLiteral("HAS_NVIDIA"),          hasNvidia);
     // Mirrors are pipe-delimited in a single value to keep the INI format simple.
-    s.setValue("MIRRORS",             m_mirrorList.join('|'));
+    s.setValue(QStringLiteral("MIRRORS"),             m_mirrorList.join(QStringLiteral("|")));
     s.endGroup();
     s.sync();
 
     if (s.status() != QSettings::NoError) {
-        Logger::instance().error("Failed to write agent parameter file: " + filePath);
+        Logger::instance().error(QStringLiteral("Failed to write agent parameter file: ") + filePath);
         return false;
     }
 
@@ -471,7 +470,7 @@ bool UpdateManager::writeAgentParams(const QString& filePath, bool hasNvidia) co
     QFile f(filePath);
     f.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
 
-    Logger::instance().info("Agent parameter file written: " + filePath);
+    Logger::instance().info(QStringLiteral("Agent parameter file written: ") + filePath);
     return true;
 }
 
@@ -486,11 +485,11 @@ void UpdateManager::parseAndRelayAgentOutput(const QString& output) {
 
     static const QString progressPrefix = QStringLiteral("[NUTS-AGENT] PROGRESS: ");
 
-    for (const QString& line : output.split('\n', Qt::SkipEmptyParts)) {
+    for (const QString& line : output.split(QStringLiteral("\n"), Qt::SkipEmptyParts)) {
         if (line.startsWith(progressPrefix)) {
             // Parse "N message" from the remainder.
             QString rest = line.mid(progressPrefix.length()).trimmed();
-            int spaceIdx = rest.indexOf(' ');
+            int spaceIdx = rest.indexOf(QChar(u' '));
             if (spaceIdx > 0) {
                 bool ok;
                 int pct = rest.left(spaceIdx).toInt(&ok);
@@ -499,9 +498,9 @@ void UpdateManager::parseAndRelayAgentOutput(const QString& output) {
                     Q_EMIT updateProgress(pct, msg);
                 }
             }
-        } else if (line.contains("[NUTS-AGENT]")) {
+        } else if (line.contains(QStringLiteral("[NUTS-AGENT]"))) {
             // Forward all other agent log lines verbatim.
-            Logger::instance().info("Agent: " + line);
+            Logger::instance().info(QStringLiteral("Agent: ") + line);
         }
     }
 }
@@ -554,7 +553,7 @@ bool UpdateManager::checkDiskSpace() {
 
     if (availableHome < requiredHome) {
         Logger::instance().error(
-            QString("Insufficient space on %1. Required: %2 GB, Available: %3 GB")
+            QStringLiteral("Insufficient space on %1. Required: %2 GB, Available: %3 GB")
             .arg(downloadDir)
             .arg(requiredHome / (1024.0 * 1024 * 1024), 0, 'f', 2)
             .arg(availableHome / (1024.0 * 1024 * 1024), 0, 'f', 2));
@@ -562,17 +561,17 @@ bool UpdateManager::checkDiskSpace() {
     }
 
     // Check space on root for unpacking (need at least 1GB free after update)
-    qint64 availableRoot = m_sysInterface->getAvailableSpace("/");
+    qint64 availableRoot = m_sysInterface->getAvailableSpace(QStringLiteral("/"));
     qint64 requiredRoot = 1LL * 1024 * 1024 * 1024; // 1GB minimum
 
     if (availableRoot < requiredRoot) {
-        Logger::instance().error(QString("Insufficient space on root partition. Required: %1 GB, Available: %2 GB")
+        Logger::instance().error(QStringLiteral("Insufficient space on root partition. Required: %1 GB, Available: %2 GB")
                                 .arg(requiredRoot / (1024.0 * 1024 * 1024), 0, 'f', 2)
                                 .arg(availableRoot / (1024.0 * 1024 * 1024), 0, 'f', 2));
         return false;
     }
 
-    Logger::instance().info(QString("Disk space check passed. Home: %1 GB free, Root: %2 GB free")
+    Logger::instance().info(QStringLiteral("Disk space check passed. Home: %1 GB free, Root: %2 GB free")
                            .arg(availableHome / (1024.0 * 1024 * 1024), 0, 'f', 2)
                            .arg(availableRoot / (1024.0 * 1024 * 1024), 0, 'f', 2));
 

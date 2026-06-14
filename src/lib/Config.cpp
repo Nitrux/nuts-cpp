@@ -42,31 +42,31 @@ bool Config::load(const QString& configPath) {
     }
 
     // Load directory settings with path validation
-    QString downloadDir = settings.value("NUTS_DIR_DLS", m_downloadDir).toString();
-    QString squashfsDir = settings.value("NUTS_DIR_SQS", m_squashfsDir).toString();
-    QString backupDir = settings.value("NUTS_DIR_BAK", m_backupDir).toString();
-    QString xfsDir = settings.value("NUTS_DIR_XFS", m_xfsDir).toString();
-    QString logFile = settings.value("NUTS_LOG", m_logFile).toString();
-    QString branch = settings.value("NUTS_BRANCH", m_branch).toString();
+    QString downloadDir = settings.value(QStringLiteral("NUTS_DIR_DLS"), m_downloadDir).toString();
+    QString squashfsDir = settings.value(QStringLiteral("NUTS_DIR_SQS"), m_squashfsDir).toString();
+    QString backupDir = settings.value(QStringLiteral("NUTS_DIR_BAK"), m_backupDir).toString();
+    QString xfsDir = settings.value(QStringLiteral("NUTS_DIR_XFS"), m_xfsDir).toString();
+    QString logFile = settings.value(QStringLiteral("NUTS_LOG"), m_logFile).toString();
+    QString branch = settings.value(QStringLiteral("NUTS_BRANCH"), m_branch).toString();
 
     // SECURITY: Validate paths don't contain traversal sequences
-    if (downloadDir.contains("../") || downloadDir.contains("..\\")) {
+    if (downloadDir.contains(QStringLiteral("../")) || downloadDir.contains(QStringLiteral("..\\"))) {
         qWarning() << "SECURITY ERROR: Download directory contains path traversal sequence!";
         return false;
     }
-    if (squashfsDir.contains("../") || squashfsDir.contains("..\\")) {
+    if (squashfsDir.contains(QStringLiteral("../")) || squashfsDir.contains(QStringLiteral("..\\"))) {
         qWarning() << "SECURITY ERROR: SquashFS directory contains path traversal sequence!";
         return false;
     }
-    if (backupDir.contains("../") || backupDir.contains("..\\")) {
+    if (backupDir.contains(QStringLiteral("../")) || backupDir.contains(QStringLiteral("..\\"))) {
         qWarning() << "SECURITY ERROR: Backup directory contains path traversal sequence!";
         return false;
     }
-    if (xfsDir.contains("../") || xfsDir.contains("..\\")) {
+    if (xfsDir.contains(QStringLiteral("../")) || xfsDir.contains(QStringLiteral("..\\"))) {
         qWarning() << "SECURITY ERROR: XFS directory contains path traversal sequence!";
         return false;
     }
-    if (logFile.contains("../") || logFile.contains("..\\")) {
+    if (logFile.contains(QStringLiteral("../")) || logFile.contains(QStringLiteral("..\\"))) {
         qWarning() << "SECURITY ERROR: Log file path contains path traversal sequence!";
         return false;
     }
@@ -84,12 +84,12 @@ bool Config::load(const QString& configPath) {
 
 QString Config::queryFileUrl() const {
     QString url = m_queryFileUrlTemplate;
-    return url.replace("{branch}", m_branch);
+    return url.replace(QStringLiteral("{branch}"), m_branch);
 }
 
 QString Config::componentBaseUrl() const {
     QString url = m_componentBaseUrlTemplate;
-    return url.replace("{branch}", m_branch);
+    return url.replace(QStringLiteral("{branch}"), m_branch);
 }
 
 QString Config::releaseNotesUrl() const {

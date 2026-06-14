@@ -11,8 +11,8 @@ int main(int argc, char* argv[])
     // QCoreApplication is required by QProcess / QFile but we never call
     // app.exec() — all operations are synchronous.
     QCoreApplication app(argc, argv);
-    app.setApplicationName("nuts-agent");
-    app.setApplicationVersion("3.0.0");
+    app.setApplicationName(QStringLiteral("nuts-agent"));
+    app.setApplicationVersion(QStringLiteral("3.0.0"));
 
     if (::getuid() != 0) {
         std::cerr << "[NUTS-AGENT] ERROR: Must run as root\n";
@@ -48,7 +48,7 @@ int main(int argc, char* argv[])
     // Mirrors are stored pipe-delimited in a single INI value.
     const QString mirrorsStr = s.value("Agent/MIRRORS").toString();
     if (!mirrorsStr.isEmpty())
-        params.mirrors = mirrorsStr.split('|', Qt::SkipEmptyParts);
+        params.mirrors = mirrorsStr.split(QStringLiteral("|"), Qt::SkipEmptyParts);
 
     // Validate the fields that are strictly required to proceed.
     if (params.minTarget.isEmpty()

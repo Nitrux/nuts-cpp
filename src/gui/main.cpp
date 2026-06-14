@@ -22,8 +22,8 @@ int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
 
     // 3. SETUP ORGANIZATION
-    app.setOrganizationName("Nitrux");
-    app.setApplicationName("Nitrux Update Tool System");
+    app.setOrganizationName(QStringLiteral("Nitrux"));
+    app.setApplicationName(QStringLiteral("Nitrux Update Tool System"));
 
     // 4. SETUP WINDOW ICON
     QIcon appIcon(QStringLiteral(":/assets/nuts-gui.svg")); 
@@ -40,17 +40,17 @@ int main(int argc, char* argv[]) {
                      i18n("© %1 Made by Nitrux | Built with MauiKit", QString::number(QDate::currentDate().year())));
 
     about.addAuthor(QStringLiteral("Uri Herrera"), i18n("Developer"), QStringLiteral("uri_herrera@nxos.org"));
-    about.setHomepage("https://nxos.org");
-    about.setProductName("nitrux/nuts");
-    about.setOrganizationDomain("nxos.org");
-    about.setDesktopFileName("org.nxos.nuts");
+    about.setHomepage(QStringLiteral("https://nxos.org"));
+    about.setProductName(QByteArrayLiteral("nitrux/nuts"));
+    about.setOrganizationDomain(QByteArrayLiteral("nxos.org"));
+    about.setDesktopFileName(QStringLiteral("org.nxos.nuts"));
     
     about.setProgramLogo(app.windowIcon());
     KAboutData::setApplicationData(about);
 
     // Configure MauiKit after KAboutData is set, so MauiApp can append
     // framework build metadata to the existing About data.
-    MauiApp::instance()->setIconName("qrc:/assets/nuts-gui.svg");
+    MauiApp::instance()->setIconName(QStringLiteral("qrc:/assets/nuts-gui.svg"));
 
     // 7. INITIALIZE LOGIC BEFORE ENGINE
     Nuts::NutsClient nutsClient;

@@ -122,7 +122,7 @@ void NutsHelper::connectSignals() {
     // Forward update progress
     connect(m_updateManager, &UpdateManager::downloadProgress, this,
             [this](int percentage, qint64 bytesReceived, qint64 bytesTotal) {
-                QString details = QString("Downloaded: %1 MB / %2 MB")
+                QString details = QStringLiteral("Downloaded: %1 MB / %2 MB")
                                      .arg(bytesReceived / 1024.0 / 1024.0, 0, 'f', 2)
                                      .arg(bytesTotal / 1024.0 / 1024.0, 0, 'f', 2);
                 emitProgress(OperationStatus::DownloadingUpdate, percentage,
@@ -166,7 +166,7 @@ void NutsHelper::emitOperationFailed(const QString& error) {
 bool NutsHelper::PerformUpdate() {
 
     // Check authorization before proceeding
-    if (!checkAuthorization("org.nxos.nuts.update")) {
+    if (!checkAuthorization(QStringLiteral("org.nxos.nuts.update"))) {
         return false;  // Error already sent by checkAuthorization
     }
 
@@ -185,15 +185,15 @@ bool NutsHelper::PerformUpdate() {
 
 void NutsHelper::handleUpdateOperation() {
     // Check connectivity
-    emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking connectivity");
+    emitProgress(OperationStatus::CheckingConnectivity, 5, QStringLiteral("Checking connectivity"));
 
     if (!m_sysInterface->checkInternetConnectivity()) {
-        emitOperationFailed("No internet connectivity");
+        emitOperationFailed(QStringLiteral("No internet connectivity"));
         return;
     }
 
     if (!m_sysInterface->checkGitHubConnectivity()) {
-        emitOperationFailed("Cannot reach GitHub");
+        emitOperationFailed(QStringLiteral("Cannot reach GitHub"));
         return;
     }
 
@@ -201,21 +201,21 @@ void NutsHelper::handleUpdateOperation() {
     SystemInfo sysInfo = m_sysInterface->getSystemInfo();
 
     // Download query file
-    emitProgress(OperationStatus::DownloadingUpdate, 10, "Checking for updates");
+    emitProgress(OperationStatus::DownloadingUpdate, 10, QStringLiteral("Checking for updates"));
 
     if (!m_updateManager->downloadQueryFile(Config::instance().branch())) {
-        emitOperationFailed("Failed to download update information");
+        emitOperationFailed(QStringLiteral("Failed to download update information"));
         return;
     }
 
     // Check if update is available
     if (!m_updateManager->isUpdateAvailable(sysInfo.version)) {
-        emitOperationCompleted(true, "No update available");
+        emitOperationCompleted(true, QStringLiteral("No update available"));
         return;
     }
 
     // Create backup
-    emitProgress(OperationStatus::CreatingBackup, 15, "Creating system backup");
+    emitProgress(OperationStatus::CreatingBackup, 15, QStringLiteral("Creating system backup"));
 
     // Ensure required directories exist before attempting backup
     const QString xfsDir = Config::instance().xfsDir();
@@ -223,47 +223,47 @@ void NutsHelper::handleUpdateOperation() {
 
     if (!m_sysInterface->directoryExists(xfsDir)) {
         if (!m_sysInterface->createSecureDirectory(xfsDir)) {
-            emitOperationFailed("Failed to create XFS directory: " + xfsDir);
+            emitOperationFailed(QStringLiteral("Failed to create XFS directory: ") + xfsDir);
             return;
         }
     }
 
     if (!m_sysInterface->directoryExists(backupDir)) {
         if (!m_sysInterface->createSecureDirectory(backupDir)) {
-            emitOperationFailed("Failed to create backup directory: " + backupDir);
+            emitOperationFailed(QStringLiteral("Failed to create backup directory: ") + backupDir);
             return;
         }
     }
 
-    QString xfsBackupFile = xfsDir + "/xfs-backup.xfs";
-    QString compressedBackup = xfsBackupFile + ".zst";
+    QString xfsBackupFile = xfsDir  + QStringLiteral("/xfs-backup.xfs");
+    QString compressedBackup = xfsBackupFile  + QStringLiteral(".zst");
 
     if (QFile::exists(compressedBackup)) {
         Logger::instance().info("Backup already exists, skipping");
     } else {
         if (!m_backupManager->createBackup(sysInfo.rootPartition, xfsBackupFile)) {
-            emitOperationFailed("Failed to create backup");
+            emitOperationFailed(QStringLiteral("Failed to create backup"));
             return;
         }
 
-        emitProgress(OperationStatus::CompressingBackup, 40, "Compressing backup");
+        emitProgress(OperationStatus::CompressingBackup, 40, QStringLiteral("Compressing backup"));
 
         if (!m_backupManager->compressBackup(xfsBackupFile, compressedBackup)) {
-            emitOperationFailed("Failed to compress backup");
+            emitOperationFailed(QStringLiteral("Failed to compress backup"));
             return;
         }
     }
 
     // Apply update
-    emitProgress(OperationStatus::ApplyingUpdate, 60, "Applying update");
+    emitProgress(OperationStatus::ApplyingUpdate, 60, QStringLiteral("Applying update"));
 
     if (!m_updateManager->applyUpdate()) {
-        emitOperationFailed("Failed to apply update");
+        emitOperationFailed(QStringLiteral("Failed to apply update"));
         return;
     }
 
     // Success
-    emitOperationCompleted(true, "Update completed successfully. System will reboot in 30 seconds.");
+    emitOperationCompleted(true, QStringLiteral("Update completed successfully. System will reboot in 30 seconds."));
 
     // Schedule reboot
     QThread::sleep(30);
@@ -279,7 +279,7 @@ void NutsHelper::handleUpdateOperation() {
 
     // Use standard reboot command with absolute path to prevent PATH injection
     QString output, error;
-    if (!m_sysInterface->executeCommand("/usr/sbin/reboot", {}, output, error, 5000)) {
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/reboot"), QStringList{}, output, error, 5000)) {
         Logger::instance().warning("Reboot command failed, trying direct syscall");
 
         // Fallback to direct kernel syscall (no shell, no PATH lookup)
@@ -294,7 +294,7 @@ bool NutsHelper::PerformRescue() {
 
     // Check authorization before proceeding
     Logger::instance().info("Checking authorization for org.nxos.nuts.rescue");
-    if (!checkAuthorization("org.nxos.nuts.rescue")) {
+    if (!checkAuthorization(QStringLiteral("org.nxos.nuts.rescue"))) {
         Logger::instance().error("Authorization check failed");
         return false;  // Error already sent by checkAuthorization
     }
@@ -317,16 +317,16 @@ bool NutsHelper::PerformRescue() {
 
 void NutsHelper::handleRescueOperation() {
     Logger::instance().info("=== Starting Rescue Operation ===");
-    emitProgress(OperationStatus::CheckingConnectivity, 5, "Checking environment");
+    emitProgress(OperationStatus::CheckingConnectivity, 5, QStringLiteral("Checking environment"));
 
     // Marker file path used throughout this function
-    const QString rescueMarkerPath = "/var/run/nuts-cpp-rescue-completed";
+    const QString rescueMarkerPath = QStringLiteral("/var/run/nuts-cpp-rescue-completed");
 
     // Check if running from Live session
     Logger::instance().info("Checking for Live session (looking for /usr/bin/calamares)");
-    if (!QFile::exists("/usr/bin/calamares")) {
+    if (!QFile::exists(QStringLiteral("/usr/bin/calamares"))) {
         Logger::instance().error("Not running from Live session - calamares not found");
-        emitOperationFailed("Rescue operation can only be run from a Live session");
+        emitOperationFailed(QStringLiteral("Rescue operation can only be run from a Live session"));
         return;
     }
     Logger::instance().success("Live session detected");
@@ -335,183 +335,179 @@ void NutsHelper::handleRescueOperation() {
     // This prevents re-running the rescue when the user hasn't rebooted yet.
     if (QFile::exists(rescueMarkerPath)) {
         Logger::instance().warning("A rescue operation was already completed in this session");
-        emitOperationFailed("Rescue operation already completed. Please reboot the system to verify the restoration.");
+        emitOperationFailed(QStringLiteral("Rescue operation already completed. Please reboot the system to verify the restoration."));
         return;
     }
 
     // Find partitions with absolute path to prevent PATH injection
     Logger::instance().info("Searching for NX_ROOT partition");
     QString output, error;
-    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_ROOT"}, output, error)) {
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/findfs"), QStringList{QStringLiteral("LABEL=NX_ROOT")}, output, error)) {
         Logger::instance().error("Failed to find NX_ROOT partition");
-        Logger::instance().error("findfs error: " + error);
-        emitOperationFailed("Cannot find NX_ROOT partition. Error: " + error);
+        Logger::instance().error(QStringLiteral("findfs error: ") + error);
+        emitOperationFailed(QStringLiteral("Cannot find NX_ROOT partition. Error: ") + error);
         return;
     }
     QString rootPartition = output.trimmed();
-    Logger::instance().info("Found NX_ROOT: " + rootPartition);
+    Logger::instance().info(QStringLiteral("Found NX_ROOT: ") + rootPartition);
 
     // Safety check 1: Verify filesystem type (must be XFS for xfsrestore to work)
     Logger::instance().info("Verifying NX_ROOT filesystem type");
-    if (!m_sysInterface->executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "TYPE", rootPartition}, output, error)) {
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/blkid"), QStringList{QStringLiteral("-o"), QStringLiteral("value"), QStringLiteral("-s"), QStringLiteral("TYPE"), rootPartition}, output, error)) {
         Logger::instance().error("Failed to determine filesystem type of NX_ROOT");
-        Logger::instance().error("blkid error: " + error);
-        emitOperationFailed("Cannot determine NX_ROOT filesystem type. Error: " + error);
+        Logger::instance().error(QStringLiteral("blkid error: ") + error);
+        emitOperationFailed(QStringLiteral("Cannot determine NX_ROOT filesystem type. Error: ") + error);
         return;
     }
     QString rootFilesystem = output.trimmed();
-    Logger::instance().info("NX_ROOT filesystem: " + rootFilesystem);
+    Logger::instance().info(QStringLiteral("NX_ROOT filesystem: ") + rootFilesystem);
 
-    if (rootFilesystem != "xfs") {
-        Logger::instance().error("The filesystem of NX_ROOT is " + rootFilesystem + ", not XFS");
-        emitOperationFailed("The filesystem of NX_ROOT is " + rootFilesystem +
-                           ", not XFS. xfsrestore requires an XFS partition.");
+    if (rootFilesystem != QStringLiteral("xfs")) {
+        Logger::instance().error(QStringLiteral("The filesystem of NX_ROOT is ") + rootFilesystem  + QStringLiteral(", not XFS"));
+        emitOperationFailed(QStringLiteral("The filesystem of NX_ROOT is ") + rootFilesystem  + QStringLiteral(", not XFS. xfsrestore requires an XFS partition."));
         return;
     }
     Logger::instance().success("Filesystem type verified: XFS");
 
     // Safety check 2: Check for duplicate NX_ROOT labels to prevent restoring to the wrong drive
     Logger::instance().info("Checking for duplicate NX_ROOT labels");
-    if (!m_sysInterface->executeCommand("/usr/sbin/blkid", {"-o", "device", "-t", "LABEL=NX_ROOT"}, output, error)) {
-        Logger::instance().warning("Failed to enumerate NX_ROOT labels (blkid error: " + error + "), proceeding with caution");
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/blkid"), QStringList{QStringLiteral("-o"), QStringLiteral("device"), QStringLiteral("-t"), QStringLiteral("LABEL=NX_ROOT")}, output, error)) {
+        Logger::instance().warning(QStringLiteral("Failed to enumerate NX_ROOT labels (blkid error: ") + error  + QStringLiteral("), proceeding with caution"));
     } else {
-        QStringList devices = output.trimmed().split('\n', Qt::SkipEmptyParts);
+        QStringList devices = output.trimmed().split(QStringLiteral("\n"), Qt::SkipEmptyParts);
         int labelCount = devices.size();
-        Logger::instance().info(QString("Found %1 device(s) with NX_ROOT label").arg(labelCount));
+        Logger::instance().info(QStringLiteral("Found %1 device(s) with NX_ROOT label").arg(labelCount));
 
         if (labelCount > 1) {
-            QString deviceList = devices.join(", ");
+            QString deviceList = devices.join(QStringLiteral(", "));
             Logger::instance().error("CRITICAL: Duplicate NX_ROOT partition labels detected!");
-            Logger::instance().error("We found " + QString::number(labelCount) +
-                                    " devices with the label 'NX_ROOT': " + deviceList);
-            emitOperationFailed("Duplicate NX_ROOT partition labels detected! Found " +
-                               QString::number(labelCount) + " devices: " + deviceList +
-                               ". Please disconnect the external/secondary drive to ensure safe restoration.");
+            Logger::instance().error(QStringLiteral("We found ") + QString::number(labelCount) +
+                                    QStringLiteral(" devices with the label 'NX_ROOT': ") + deviceList);
+            emitOperationFailed(QStringLiteral("Duplicate NX_ROOT partition labels detected! Found ") +
+                               QString::number(labelCount) + QStringLiteral(" devices: ") + deviceList  + QStringLiteral(". Please disconnect the external/secondary drive to ensure safe restoration."));
             return;
         }
     }
     Logger::instance().success("No duplicate labels detected");
 
     Logger::instance().info("Searching for NX_HOME partition");
-    if (!m_sysInterface->executeCommand("/usr/sbin/findfs", {"LABEL=NX_HOME"}, output, error)) {
+    if (!m_sysInterface->executeCommand(QStringLiteral("/usr/sbin/findfs"), QStringList{QStringLiteral("LABEL=NX_HOME")}, output, error)) {
         Logger::instance().error("Failed to find NX_HOME partition");
-        Logger::instance().error("findfs error: " + error);
-        emitOperationFailed("Cannot find NX_HOME partition. Error: " + error);
+        Logger::instance().error(QStringLiteral("findfs error: ") + error);
+        emitOperationFailed(QStringLiteral("Cannot find NX_HOME partition. Error: ") + error);
         return;
     }
     QString homePartition = output.trimmed();
-    Logger::instance().info("Found NX_HOME: " + homePartition);
+    Logger::instance().info(QStringLiteral("Found NX_HOME: ") + homePartition);
 
     // Mount partitions
-    emitProgress(OperationStatus::RestoringBackup, 10, "Mounting partitions");
+    emitProgress(OperationStatus::RestoringBackup, 10, QStringLiteral("Mounting partitions"));
 
-    QString rootMount = "/media/nitrux/NX_ROOT";
-    QString homeMount = "/media/nitrux/NX_HOME";
+    QString rootMount = QStringLiteral("/media/nitrux/NX_ROOT");
+    QString homeMount = QStringLiteral("/media/nitrux/NX_HOME");
 
     // Safety check 3: Unmount if already mounted (from previous interrupted operation)
-    Logger::instance().info("Checking for stale mounts at " + rootMount);
+    Logger::instance().info(QStringLiteral("Checking for stale mounts at ") + rootMount);
     if (m_sysInterface->isMounted(rootMount)) {
-        Logger::instance().warning(rootMount + " is already mounted. Unmounting...");
+        Logger::instance().warning(rootMount  + QStringLiteral(" is already mounted. Unmounting..."));
         if (!m_sysInterface->unmountPartition(rootMount)) {
-            Logger::instance().error("Failed to unmount stale mount at " + rootMount);
-            emitOperationFailed("Failed to unmount stale mount at " + rootMount +
-                               ". Please unmount manually before retrying.");
+            Logger::instance().error(QStringLiteral("Failed to unmount stale mount at ") + rootMount);
+            emitOperationFailed(QStringLiteral("Failed to unmount stale mount at ") + rootMount  + QStringLiteral(". Please unmount manually before retrying."));
             return;
         }
         Logger::instance().success("Stale mount unmounted");
     }
 
-    Logger::instance().info("Checking for stale mounts at " + homeMount);
+    Logger::instance().info(QStringLiteral("Checking for stale mounts at ") + homeMount);
     if (m_sysInterface->isMounted(homeMount)) {
-        Logger::instance().warning(homeMount + " is already mounted. Unmounting...");
+        Logger::instance().warning(homeMount  + QStringLiteral(" is already mounted. Unmounting..."));
         if (!m_sysInterface->unmountPartition(homeMount)) {
-            Logger::instance().error("Failed to unmount stale mount at " + homeMount);
-            emitOperationFailed("Failed to unmount stale mount at " + homeMount +
-                               ". Please unmount manually before retrying.");
+            Logger::instance().error(QStringLiteral("Failed to unmount stale mount at ") + homeMount);
+            emitOperationFailed(QStringLiteral("Failed to unmount stale mount at ") + homeMount  + QStringLiteral(". Please unmount manually before retrying."));
             return;
         }
         Logger::instance().success("Stale mount unmounted");
     }
 
-    Logger::instance().info("Creating mount point: " + rootMount);
+    Logger::instance().info(QStringLiteral("Creating mount point: ") + rootMount);
     m_sysInterface->createDirectory(rootMount);
 
-    Logger::instance().info("Mounting " + rootPartition + " to " + rootMount);
+    Logger::instance().info(QStringLiteral("Mounting ") + rootPartition + QStringLiteral(" to ") + rootMount);
     if (!m_sysInterface->mountPartition(rootPartition, rootMount)) {
         Logger::instance().error("Failed to mount root partition");
-        emitOperationFailed("Failed to mount root partition");
+        emitOperationFailed(QStringLiteral("Failed to mount root partition"));
         return;
     }
     Logger::instance().success("Root partition mounted");
 
-    Logger::instance().info("Creating mount point: " + homeMount);
+    Logger::instance().info(QStringLiteral("Creating mount point: ") + homeMount);
     m_sysInterface->createDirectory(homeMount);
 
-    Logger::instance().info("Mounting " + homePartition + " to " + homeMount);
+    Logger::instance().info(QStringLiteral("Mounting ") + homePartition + QStringLiteral(" to ") + homeMount);
     if (!m_sysInterface->mountPartition(homePartition, homeMount)) {
         Logger::instance().error("Failed to mount home partition");
         m_sysInterface->unmountPartition(rootMount);
-        emitOperationFailed("Failed to mount home partition");
+        emitOperationFailed(QStringLiteral("Failed to mount home partition"));
         return;
     }
     Logger::instance().success("Home partition mounted");
 
     // Locate backup
-    QString compressedBackup = homeMount + "/.nuts/xfs/xfs-backup.xfs.zst";
-    QString checksumFile = homeMount + "/.nuts/xfs/xfs-backup.md5sum";
+    QString compressedBackup = homeMount  + QStringLiteral("/.nuts/xfs/xfs-backup.xfs.zst");
+    QString checksumFile = homeMount  + QStringLiteral("/.nuts/xfs/xfs-backup.md5sum");
 
-    Logger::instance().info("Looking for backup file: " + compressedBackup);
+    Logger::instance().info(QStringLiteral("Looking for backup file: ") + compressedBackup);
     if (!QFile::exists(compressedBackup)) {
-        Logger::instance().error("Backup file not found at: " + compressedBackup);
-        Logger::instance().info("Listing contents of " + homeMount + "/.nuts/xfs/");
+        Logger::instance().error(QStringLiteral("Backup file not found at: ") + compressedBackup);
+        Logger::instance().info(QStringLiteral("Listing contents of ") + homeMount  + QStringLiteral("/.nuts/xfs/"));
         QString lsOutput, lsError;
-        m_sysInterface->executeCommand("/usr/bin/ls", {"-la", homeMount + "/.nuts/xfs/"}, lsOutput, lsError);
-        Logger::instance().info("Directory contents:\n" + lsOutput);
+        m_sysInterface->executeCommand(QStringLiteral("/usr/bin/ls"), QStringList{QStringLiteral("-la"), homeMount + QStringLiteral("/.nuts/xfs/")}, lsOutput, lsError);
+        Logger::instance().info(QStringLiteral("Directory contents:\n") + lsOutput);
 
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        emitOperationFailed("Backup file not found at: " + compressedBackup);
+        emitOperationFailed(QStringLiteral("Backup file not found at: ") + compressedBackup);
         return;
     }
     Logger::instance().success("Backup file found");
 
     // Verify backup
-    emitProgress(OperationStatus::VerifyingUpdate, 20, "Verifying backup");
+    emitProgress(OperationStatus::VerifyingUpdate, 20, QStringLiteral("Verifying backup"));
     Logger::instance().info("Verifying backup checksum");
 
     if (!m_backupManager->verifyBackup(compressedBackup, checksumFile)) {
         Logger::instance().error("Backup verification failed");
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        emitOperationFailed("Backup verification failed");
+        emitOperationFailed(QStringLiteral("Backup verification failed"));
         return;
     }
     Logger::instance().success("Backup verified successfully");
 
     // Decompress backup
-    emitProgress(OperationStatus::DecompressingBackup, 30, "Decompressing backup");
+    emitProgress(OperationStatus::DecompressingBackup, 30, QStringLiteral("Decompressing backup"));
     Logger::instance().info("Decompressing backup");
 
-    QString decompressedBackup = homeMount + "/.nuts/xfs/xfs-backup.xfs";
+    QString decompressedBackup = homeMount  + QStringLiteral("/.nuts/xfs/xfs-backup.xfs");
     if (!m_backupManager->decompressBackup(compressedBackup, decompressedBackup)) {
         Logger::instance().error("Failed to decompress backup");
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        emitOperationFailed("Failed to decompress backup");
+        emitOperationFailed(QStringLiteral("Failed to decompress backup"));
         return;
     }
     Logger::instance().success("Backup decompressed successfully");
 
     // Restore backup
-    emitProgress(OperationStatus::RestoringBackup, 50, "Restoring system");
-    Logger::instance().info("Restoring backup to " + rootMount);
+    emitProgress(OperationStatus::RestoringBackup, 50, QStringLiteral("Restoring system"));
+    Logger::instance().info(QStringLiteral("Restoring backup to ") + rootMount);
 
     if (!m_backupManager->restoreBackup(decompressedBackup, rootMount)) {
         Logger::instance().error("Failed to restore backup");
         QFile::remove(decompressedBackup);
         m_sysInterface->unmountPartition(homeMount);
         m_sysInterface->unmountPartition(rootMount);
-        emitOperationFailed("Failed to restore backup");
+        emitOperationFailed(QStringLiteral("Failed to restore backup"));
         return;
     }
     Logger::instance().success("Backup restored successfully");
@@ -537,7 +533,7 @@ void NutsHelper::handleRescueOperation() {
     }
 
     Logger::instance().success("=== Rescue Operation Completed Successfully ===");
-    emitOperationCompleted(true, "System restored successfully. Please reboot to verify the restoration.");
+    emitOperationCompleted(true, QStringLiteral("System restored successfully. Please reboot to verify the restoration."));
 }
 
 QVariantMap NutsHelper::GetSystemInfo() {
@@ -545,14 +541,14 @@ QVariantMap NutsHelper::GetSystemInfo() {
     SystemInfo info = m_sysInterface->getSystemInfo();
 
     QVariantMap map;
-    map["distribution"] = info.distribution;
-    map["version"] = info.version;
-    map["rootPartition"] = info.rootPartition;
-    map["rootLabel"] = info.rootLabel;
-    map["rootFilesystem"] = info.rootFilesystem;
-    map["homePartition"] = info.homePartition;
-    map["homeLabel"] = info.homeLabel;
-    map["overlayActive"] = info.overlayActive;
+    map[QStringLiteral("distribution")] = info.distribution;
+    map[QStringLiteral("version")] = info.version;
+    map[QStringLiteral("rootPartition")] = info.rootPartition;
+    map[QStringLiteral("rootLabel")] = info.rootLabel;
+    map[QStringLiteral("rootFilesystem")] = info.rootFilesystem;
+    map[QStringLiteral("homePartition")] = info.homePartition;
+    map[QStringLiteral("homeLabel")] = info.homeLabel;
+    map[QStringLiteral("overlayActive")] = info.overlayActive;
 
     return map;
 }
@@ -565,41 +561,41 @@ QVariantMap NutsHelper::CheckForUpdates() {
 
     // Check connectivity first
     if (!m_sysInterface->checkInternetConnectivity()) {
-        result["available"] = false;
-        result["error"] = "No internet connectivity";
+        result[QStringLiteral("available")] = false;
+        result[QStringLiteral("error")] = QStringLiteral("No internet connectivity");
         return result;
     }
 
     if (!m_sysInterface->checkGitHubConnectivity()) {
-        result["available"] = false;
-        result["error"] = "Cannot reach GitHub";
+        result[QStringLiteral("available")] = false;
+        result[QStringLiteral("error")] = QStringLiteral("Cannot reach GitHub");
         return result;
     }
 
     // Get current system info
     SystemInfo sysInfo = m_sysInterface->getSystemInfo();
-    result["currentVersion"] = sysInfo.version;
+    result[QStringLiteral("currentVersion")] = sysInfo.version;
 
     // Download and parse query file
     if (!m_updateManager->downloadQueryFile(Config::instance().branch())) {
-        result["available"] = false;
-        result["error"] = "Failed to download update information";
+        result[QStringLiteral("available")] = false;
+        result[QStringLiteral("error")] = QStringLiteral("Failed to download update information");
         return result;
     }
 
     // Check if update is available
     bool available = m_updateManager->isUpdateAvailable(sysInfo.version);
-    result["available"] = available;
+    result[QStringLiteral("available")] = available;
 
     if (available) {
         QString targetVersion = m_updateManager->getMinTarget();
         QString updateUrl = m_updateManager->getUpdateUrl();
         const QStringList archiveUrls = m_updateManager->getArchiveUrls();
 
-        result["targetVersion"] = targetVersion;
-        result["updateUrl"] = updateUrl;
-        result["updateChecksum"] = m_updateManager->getUpdateChecksum();
-        result["otaSize"] = m_updateManager->getOtaSize();
+        result[QStringLiteral("targetVersion")] = targetVersion;
+        result[QStringLiteral("updateUrl")] = updateUrl;
+        result[QStringLiteral("updateChecksum")] = m_updateManager->getUpdateChecksum();
+        result[QStringLiteral("otaSize")] = m_updateManager->getOtaSize();
 
         // Fetch file size (cached for this check)
         qint64 fileSize = 0;
@@ -612,26 +608,26 @@ QVariantMap NutsHelper::CheckForUpdates() {
         if (fileSize <= 0 && m_updateManager->getOtaSize() > 0) {
             fileSize = m_updateManager->getOtaSize();
         }
-        result["updateSize"] = fileSize;
+        result[QStringLiteral("updateSize")] = fileSize;
 
         // Build release notes URL
         // Sanitize version string to prevent URL injection
         QString urlVersion = m_sysInterface->sanitizeVersionString(targetVersion);
         if (urlVersion.isEmpty()) {
             Logger::instance().error("SECURITY: Invalid version string from update metadata");
-            result["releaseNotesUrl"] = "";
+            result[QStringLiteral("releaseNotesUrl")] = QStringLiteral("");
         } else {
-            urlVersion.replace(" ", "-");
+            urlVersion.replace(QStringLiteral(" "), QStringLiteral("-"));
 
             QString releaseNotesUrl = Config::instance().releaseNotesUrl();
-            releaseNotesUrl.replace("{branch}", Config::instance().branch());
-            releaseNotesUrl.replace("{version}", urlVersion);
-            result["releaseNotesUrl"] = releaseNotesUrl;
+            releaseNotesUrl.replace(QStringLiteral("{branch}"), Config::instance().branch());
+            releaseNotesUrl.replace(QStringLiteral("{version}"), urlVersion);
+            result[QStringLiteral("releaseNotesUrl")] = releaseNotesUrl;
         }
 
-        Logger::instance().info("Update available: " + targetVersion);
+        Logger::instance().info(QStringLiteral("Update available: ") + targetVersion);
         if (fileSize > 0) {
-            Logger::instance().info("Update size: " + QString::number(fileSize / (1024.0 * 1024.0), 'f', 2) + " MB");
+            Logger::instance().info(QStringLiteral("Update size: ") + QString::number(fileSize / (1024.0 * 1024.0), 'f', 2)  + QStringLiteral(" MB"));
         } else {
             Logger::instance().warning("Update size could not be determined from HTTP headers");
         }
@@ -657,7 +653,7 @@ bool NutsHelper::checkAuthorization(const QString& actionId) {
 
     if (callerService.isEmpty()) {
         Logger::instance().error("Authorization failed: Cannot identify caller");
-        sendErrorReply(QDBusError::AccessDenied, "Cannot identify D-Bus caller");
+        sendErrorReply(QDBusError::AccessDenied, QStringLiteral("Cannot identify D-Bus caller"));
         return false;
     }
 
@@ -672,21 +668,21 @@ bool NutsHelper::checkAuthorization(const QString& actionId) {
     );
 
     if (result != PolkitQt1::Authority::Yes) {
-        Logger::instance().error("Authorization failed for action: " + actionId);
-        Logger::instance().error("Caller: " + callerService);
+        Logger::instance().error(QStringLiteral("Authorization failed for action: ") + actionId);
+        Logger::instance().error(QStringLiteral("Caller: ") + callerService);
         sendErrorReply(QDBusError::AccessDenied,
-                      "Authorization required for " + actionId);
+                      QStringLiteral("Authorization required for ") + actionId);
         return false;
     }
 
-    Logger::instance().info("Authorization granted for action: " + actionId);
+    Logger::instance().info(QStringLiteral("Authorization granted for action: ") + actionId);
     return true;
 }
 
 
 void NutsHelper::signalHandler(int signal) {
     if (s_instance) {
-        Logger::instance().warning(QString("Received signal %1, performing emergency cleanup").arg(signal));
+        Logger::instance().warning(QStringLiteral("Received signal %1, performing emergency cleanup").arg(signal));
         s_instance->emergencyCleanup();
     }
     QCoreApplication::exit(128 + signal);
@@ -701,17 +697,17 @@ void NutsHelper::emergencyCleanup() {
 
         // Try to unmount in reverse order
         m_sysInterface->unmountPartition(squashfsDir);
-        m_sysInterface->unmountPartition("/var/lib");
-        m_sysInterface->unmountPartition("/home");
+        m_sysInterface->unmountPartition(QStringLiteral("/var/lib"));
+        m_sysInterface->unmountPartition(QStringLiteral("/home"));
     }
 
     // Remove temporary dpkg symlinks
-    QStringList tools = {"dpkg", "dpkg-deb", "dpkg-query", "update-alternatives",
-                         "dpkg-divert", "dpkg-realpath", "dpkg-split",
-                         "dpkg-statoverride", "dpkg-trigger", "dpkg-maintscript-helper"};
+    QStringList tools = {QStringLiteral("dpkg"), QStringLiteral("dpkg-deb"), QStringLiteral("dpkg-query"), QStringLiteral("update-alternatives"),
+                         QStringLiteral("dpkg-divert"), QStringLiteral("dpkg-realpath"), QStringLiteral("dpkg-split"),
+                         QStringLiteral("dpkg-statoverride"), QStringLiteral("dpkg-trigger"), QStringLiteral("dpkg-maintscript-helper")};
 
     for (const QString& tool : tools) {
-        QString linkPath = "/usr/bin/" + tool;
+        QString linkPath = QStringLiteral("/usr/bin/") + tool;
         if (QFile::exists(linkPath)) {
             QFile::remove(linkPath);
         }

@@ -10,6 +10,7 @@
 #include <QProcess>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <initializer_list>
 
 namespace Nuts {
 
@@ -74,6 +75,10 @@ public:
 
     // Command execution
     bool executeCommand(const QString& program, const QStringList& arguments,
+                       QString& output, QString& error, int timeout = 120000);
+    bool executeCommand(const char* program, std::initializer_list<const char*> arguments,
+                       QString& output, QString& error, int timeout = 120000);
+    bool executeCommand(const char* program, const QStringList& arguments,
                        QString& output, QString& error, int timeout = 120000);
 
 Q_SIGNALS:

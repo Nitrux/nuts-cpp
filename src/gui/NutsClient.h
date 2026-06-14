@@ -65,11 +65,18 @@ private Q_SLOTS:
     void onProgressChanged(int status, int percentage, const QString& message, const QString& details);
     void onOperationCompleted(bool success, const QString& message);
     void onOperationFailed(const QString& error);
+    void onOperationFailed(const char* error);
     void onLogMessage(int level, const QString& message);
 
 private:
     void connectToHelper();
     void showNotification(const QString& title, const QString& message,
+                         KNotification::NotificationFlags flags = KNotification::DefaultEvent);
+    void showNotification(const char* title, const QString& message,
+                         KNotification::NotificationFlags flags = KNotification::DefaultEvent);
+    void showNotification(const QString& title, const char* message,
+                         KNotification::NotificationFlags flags = KNotification::DefaultEvent);
+    void showNotification(const char* title, const char* message,
                          KNotification::NotificationFlags flags = KNotification::DefaultEvent);
     QString statusToString(int status) const;
 

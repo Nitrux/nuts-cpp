@@ -43,8 +43,18 @@ private:
 
     void emitProgress(OperationStatus status, int percentage,
                      const QString& message, const QString& details = QString());
+    void emitProgress(OperationStatus status, int percentage,
+                     const char* message, const QString& details = QString()) {
+        emitProgress(status, percentage, QString::fromUtf8(message), details);
+    }
     void emitOperationCompleted(bool success, const QString& message);
+    void emitOperationCompleted(bool success, const char* message) {
+        emitOperationCompleted(success, QString::fromUtf8(message));
+    }
     void emitOperationFailed(const QString& error);
+    void emitOperationFailed(const char* error) {
+        emitOperationFailed(QString::fromUtf8(error));
+    }
 
     void connectSignals();
     bool checkAuthorization(const QString& actionId);

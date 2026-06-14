@@ -2,9 +2,26 @@
 
 #include <QString>
 #include <QStringList>
+#include <initializer_list>
+#include <utility>
 #include <csignal>   // sig_atomic_t
 
 namespace NutsAgent {
+
+inline QString toQStringArg(const QString& value)
+{
+    return value;
+}
+
+inline QString toQStringArg(const char* value)
+{
+    return QString::fromUtf8(value);
+}
+
+inline QString toQStringArg(char* value)
+{
+    return QString::fromUtf8(value);
+}
 
 // All parameters read from the INI file written by UpdateManager before the agent is launched.
 struct AgentParams {
@@ -78,15 +95,22 @@ private:
     // Returns false immediately (without launching) if s_interrupted is set.
     bool exec(const QString& program, const QStringList& args,
               QString* outPtr = nullptr);
+    bool exec(const char* program, std::initializer_list<const char*> args,
+              QString* outPtr = nullptr);
+    bool exec(const char* program, const QStringList& args,
+              QString* outPtr = nullptr);
 
     // Structured logging.  All output goes to stdout so the parent process
     // captures it in agentOutput.
     void log(const QString& level, const QString& msg);
+    void log(const char* level, const QString& msg);
+    void log(const char* level, const char* msg);
 
     // Emit a structured progress line that UpdateManager::parseAndRelayAgentOutput()
     // parses to forward updateProgress() signals to the GUI.
     // Format: "[NUTS-AGENT] PROGRESS: <pct> <msg>\n"
     void progress(int pct, const QString& msg);
+    void progress(int pct, const char* msg);
 
     AgentParams m_params;
 

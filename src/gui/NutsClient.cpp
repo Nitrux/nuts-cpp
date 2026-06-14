@@ -14,7 +14,7 @@ namespace Nuts {
 NutsClient::NutsClient(QObject* parent)
     : QObject(parent) {
     // Detect Live session (same check as in NutsHelper)
-    m_isLiveSession = QFile::exists("/usr/bin/calamares");
+    m_isLiveSession = QFile::exists(QStringLiteral("/usr/bin/calamares"));
     connectToHelper();
 }
 
@@ -25,14 +25,14 @@ NutsClient::~NutsClient() {
 void NutsClient::connectToHelper() {
     // Check if helper is running
     QDBusConnectionInterface* interface = QDBusConnection::systemBus().interface();
-    if (!interface->isServiceRegistered("org.nxos.nuts")) {
+    if (!interface->isServiceRegistered(QStringLiteral("org.nxos.nuts"))) {
         qDebug() << "Helper not running, will start on first operation";
     }
 
     // Create interface (will auto-start via D-Bus activation)
-    m_helperInterface = new QDBusInterface("org.nxos.nuts",
-                                           "/org/nxos/nuts",
-                                           "org.nxos.nuts",
+    m_helperInterface = new QDBusInterface(QStringLiteral("org.nxos.nuts"),
+                                           QStringLiteral("/org/nxos/nuts"),
+                                           QStringLiteral("org.nxos.nuts"),
                                            QDBusConnection::systemBus(),
                                            this);
 
@@ -43,20 +43,20 @@ void NutsClient::connectToHelper() {
         m_connected = true;
 
         // Connect signals
-        QDBusConnection::systemBus().connect("org.nxos.nuts", "/org/nxos/nuts", "org.nxos.nuts",
-                                            "ProgressChanged", this,
+        QDBusConnection::systemBus().connect(QStringLiteral("org.nxos.nuts"), QStringLiteral("/org/nxos/nuts"), QStringLiteral("org.nxos.nuts"),
+                                            QStringLiteral("ProgressChanged"), this,
                                             SLOT(onProgressChanged(int, int, QString, QString)));
 
-        QDBusConnection::systemBus().connect("org.nxos.nuts", "/org/nxos/nuts", "org.nxos.nuts",
-                                            "OperationCompleted", this,
+        QDBusConnection::systemBus().connect(QStringLiteral("org.nxos.nuts"), QStringLiteral("/org/nxos/nuts"), QStringLiteral("org.nxos.nuts"),
+                                            QStringLiteral("OperationCompleted"), this,
                                             SLOT(onOperationCompleted(bool, QString)));
 
-        QDBusConnection::systemBus().connect("org.nxos.nuts", "/org/nxos/nuts", "org.nxos.nuts",
-                                            "OperationFailed", this,
+        QDBusConnection::systemBus().connect(QStringLiteral("org.nxos.nuts"), QStringLiteral("/org/nxos/nuts"), QStringLiteral("org.nxos.nuts"),
+                                            QStringLiteral("OperationFailed"), this,
                                             SLOT(onOperationFailed(QString)));
 
-        QDBusConnection::systemBus().connect("org.nxos.nuts", "/org/nxos/nuts", "org.nxos.nuts",
-                                            "LogMessage", this,
+        QDBusConnection::systemBus().connect(QStringLiteral("org.nxos.nuts"), QStringLiteral("/org/nxos/nuts"), QStringLiteral("org.nxos.nuts"),
+                                            QStringLiteral("LogMessage"), this,
                                             SLOT(onLogMessage(int, QString)));
 
         qDebug() << "Connected to NUTS helper";
@@ -75,14 +75,14 @@ void NutsClient::performUpdate() {
     Q_EMIT busyChanged();
     Q_EMIT operationTypeChanged();
 
-    m_statusMessage = "Starting update...";
+    m_statusMessage = QStringLiteral("Starting update...");
     Q_EMIT statusMessageChanged();
 
-    showNotification("NUTS Update", "System update starting...", KNotification::Persistent);
+    showNotification(QStringLiteral("NUTS Update"), QStringLiteral("System update starting..."), KNotification::Persistent);
 
     // Call the D-Bus method directly - D-Bus will auto-start the helper as root
     // and PolKit will handle the authentication dialog automatically
-    QDBusReply<bool> reply = m_helperInterface->call("PerformUpdate");
+    QDBusReply<bool> reply = m_helperInterface->call(QStringLiteral("PerformUpdate"));
     if (!reply.isValid()) {
         qWarning() << "Failed to call PerformUpdate:" << reply.error().message();
         m_busy = false;
@@ -90,9 +90,9 @@ void NutsClient::performUpdate() {
 
         // Check if it was an authentication failure
         if (reply.error().type() == QDBusError::AccessDenied) {
-            onOperationFailed("Authentication cancelled or failed");
+            onOperationFailed(QStringLiteral("Authentication cancelled or failed"));
         } else {
-            onOperationFailed("Failed to start update: " + reply.error().message());
+            onOperationFailed(QStringLiteral("Failed to start update: ") + reply.error().message());
         }
     } else {
         // D-Bus call succeeded
@@ -101,7 +101,7 @@ void NutsClient::performUpdate() {
             qWarning() << "PerformUpdate returned false";
             m_busy = false;
             Q_EMIT busyChanged();
-            onOperationFailed("Failed to start update operation");
+            onOperationFailed(QStringLiteral("Failed to start update operation"));
         } else {
             qDebug() << "Update operation started successfully";
             // Operation is running asynchronously - progress updates will come via signals
@@ -119,14 +119,14 @@ void NutsClient::performRescue() {
     Q_EMIT busyChanged();
     Q_EMIT operationTypeChanged();
 
-    m_statusMessage = "Starting rescue...";
+    m_statusMessage = QStringLiteral("Starting rescue...");
     Q_EMIT statusMessageChanged();
 
-    showNotification("NUTS Rescue", "System rescue starting...", KNotification::Persistent);
+    showNotification(QStringLiteral("NUTS Rescue"), QStringLiteral("System rescue starting..."), KNotification::Persistent);
 
     // Call the D-Bus method directly - D-Bus will auto-start the helper as root
     // and PolKit will handle the authentication dialog automatically
-    QDBusReply<bool> reply = m_helperInterface->call("PerformRescue");
+    QDBusReply<bool> reply = m_helperInterface->call(QStringLiteral("PerformRescue"));
     if (!reply.isValid()) {
         qWarning() << "Failed to call PerformRescue:" << reply.error().message();
         m_busy = false;
@@ -134,9 +134,9 @@ void NutsClient::performRescue() {
 
         // Check if it was an authentication failure
         if (reply.error().type() == QDBusError::AccessDenied) {
-            onOperationFailed("Authentication cancelled or failed");
+            onOperationFailed(QStringLiteral("Authentication cancelled or failed"));
         } else {
-            onOperationFailed("Failed to start rescue: " + reply.error().message());
+            onOperationFailed(QStringLiteral("Failed to start rescue: ") + reply.error().message());
         }
     } else {
         // D-Bus call succeeded
@@ -145,7 +145,7 @@ void NutsClient::performRescue() {
             qWarning() << "PerformRescue returned false";
             m_busy = false;
             Q_EMIT busyChanged();
-            onOperationFailed("Failed to start rescue operation");
+            onOperationFailed(QStringLiteral("Failed to start rescue operation"));
         } else {
             qDebug() << "Rescue operation started successfully";
             // Operation is running asynchronously - progress updates will come via signals
@@ -159,32 +159,32 @@ void NutsClient::checkForUpdates() {
         return;
     }
 
-    m_statusMessage = "Checking for updates...";
+    m_statusMessage = QStringLiteral("Checking for updates...");
     Q_EMIT statusMessageChanged();
 
     // Call the helper's CheckForUpdates method (single source of truth)
-    QDBusReply<QVariantMap> reply = m_helperInterface->call("CheckForUpdates");
+    QDBusReply<QVariantMap> reply = m_helperInterface->call(QStringLiteral("CheckForUpdates"));
 
     if (!reply.isValid()) {
         qWarning() << "Failed to check for updates:" << reply.error().message();
-        m_statusMessage = "Failed to check for updates: " + reply.error().message();
+        m_statusMessage = QStringLiteral("Failed to check for updates: ") + reply.error().message();
         Q_EMIT statusMessageChanged();
         return;
     }
 
     QVariantMap result = reply.value();
 
-    bool available = result["available"].toBool();
+    bool available = result[QStringLiteral("available")].toBool();
     m_updateAvailable = available;
 
     if (!available) {
-        QString error = result["error"].toString();
+        QString error = result[QStringLiteral("error")].toString();
         if (!error.isEmpty()) {
             m_statusMessage = error;
             Q_EMIT operationFailed(error);
         } else {
-            m_statusMessage = "No updates available";
-            Q_EMIT noUpdatesAvailable("Your system is up to date.");
+            m_statusMessage = QStringLiteral("No updates available");
+            Q_EMIT noUpdatesAvailable(QStringLiteral("Your system is up to date."));
         }
         Q_EMIT updateAvailableChanged();
         Q_EMIT statusMessageChanged();
@@ -192,17 +192,17 @@ void NutsClient::checkForUpdates() {
     }
 
     // Update is available - Helper provides all metadata
-    m_updateVersion = result["targetVersion"].toString();
+    m_updateVersion = result[QStringLiteral("targetVersion")].toString();
 
     // Get file size from Helper (already cached)
-    qint64 bytes = result["updateSize"].toLongLong();
+    qint64 bytes = result[QStringLiteral("updateSize")].toLongLong();
     if (bytes <= 0) {
-        bytes = result["otaSize"].toLongLong();
+        bytes = result[QStringLiteral("otaSize")].toLongLong();
     }
-    m_updateSize = QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 2) + " GB";
+    m_updateSize = QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 2) + QStringLiteral(" GB");
 
     // Get release notes URL from Helper
-    QString releaseNotesUrl = result["releaseNotesUrl"].toString();
+    QString releaseNotesUrl = result[QStringLiteral("releaseNotesUrl")].toString();
 
     // Fetch release notes
     QNetworkAccessManager* notesManager = new QNetworkAccessManager(this);
@@ -213,14 +213,14 @@ void NutsClient::checkForUpdates() {
         notesManager->deleteLater();
 
         if (notesReply->error() == QNetworkReply::NoError) {
-            m_updateNotes = notesReply->readAll();
+            m_updateNotes = QString::fromUtf8(notesReply->readAll());
         } else {
-            m_updateNotes = "Release notes not available.";
+            m_updateNotes = QStringLiteral("Release notes not available.");
         }
 
         Q_EMIT updateAvailableChanged();
         Q_EMIT updateInfoChanged();
-        m_statusMessage = QString("Update available: %1").arg(m_updateVersion);
+        m_statusMessage = QStringLiteral("Update available: %1").arg(m_updateVersion);
         Q_EMIT statusMessageChanged();
     });
 }
@@ -230,12 +230,12 @@ void NutsClient::refreshSystemInfo() {
         return;
     }
 
-    QDBusReply<QVariantMap> reply = m_helperInterface->call("GetSystemInfo");
+    QDBusReply<QVariantMap> reply = m_helperInterface->call(QStringLiteral("GetSystemInfo"));
     if (reply.isValid()) {
         QVariantMap info = reply.value();
-        m_distributionInfo = QString("%1 %2")
-                                .arg(info["distribution"].toString())
-                                .arg(info["version"].toString());
+        m_distributionInfo = QStringLiteral("%1 %2")
+                                .arg(info[QStringLiteral("distribution")].toString())
+                                .arg(info[QStringLiteral("version")].toString());
         Q_EMIT systemInfoChanged();
     }
 }
@@ -249,7 +249,7 @@ void NutsClient::onProgressChanged(int status, int percentage, const QString& me
     }
 
     if (!details.isEmpty()) {
-        m_statusMessage += "\n" + details;
+        m_statusMessage += QStringLiteral("\n") + details;
     }
 
     Q_EMIT progressChanged();
@@ -265,7 +265,7 @@ void NutsClient::onOperationCompleted(bool success, const QString& message) {
     m_statusMessage = message;
     Q_EMIT statusMessageChanged();
 
-    showNotification("NUTS", message, KNotification::CloseOnTimeout);
+    showNotification(QStringLiteral("NUTS"), message, KNotification::CloseOnTimeout);
 
     Q_EMIT operationCompleted(success, message);
 }
@@ -276,12 +276,16 @@ void NutsClient::onOperationFailed(const QString& error) {
     Q_EMIT busyChanged();
     Q_EMIT operationTypeChanged();
 
-    m_statusMessage = "Error: " + error;
+    m_statusMessage = QStringLiteral("Error: ") + error;
     Q_EMIT statusMessageChanged();
 
-    showNotification("NUTS Error", error, KNotification::CloseOnTimeout | KNotification::Persistent);
+    showNotification(QStringLiteral("NUTS Error"), error, KNotification::CloseOnTimeout | KNotification::Persistent);
 
     Q_EMIT operationFailed(error);
+}
+
+void NutsClient::onOperationFailed(const char* error) {
+    onOperationFailed(QString::fromUtf8(error));
 }
 
 void NutsClient::onLogMessage(int level, const QString& message) {
@@ -290,27 +294,42 @@ void NutsClient::onLogMessage(int level, const QString& message) {
 
 void NutsClient::showNotification(const QString& title, const QString& message,
                                   KNotification::NotificationFlags flags) {
-    KNotification* notification = new KNotification("nutsEvent", flags);
+    KNotification* notification = new KNotification(QStringLiteral("nutsEvent"), flags);
     notification->setTitle(title);
     notification->setText(message);
-    notification->setIconName("system-software-update");
+    notification->setIconName(QStringLiteral("system-software-update"));
     notification->sendEvent();
+}
+
+void NutsClient::showNotification(const char* title, const QString& message,
+                                  KNotification::NotificationFlags flags) {
+    showNotification(QString::fromUtf8(title), message, flags);
+}
+
+void NutsClient::showNotification(const QString& title, const char* message,
+                                  KNotification::NotificationFlags flags) {
+    showNotification(title, QString::fromUtf8(message), flags);
+}
+
+void NutsClient::showNotification(const char* title, const char* message,
+                                  KNotification::NotificationFlags flags) {
+    showNotification(QString::fromUtf8(title), QString::fromUtf8(message), flags);
 }
 
 QString NutsClient::statusToString(int status) const {
     switch (status) {
-        case 0: return "Idle";
-        case 1: return "Checking connectivity";
-        case 2: return "Creating backup";
-        case 3: return "Compressing backup";
-        case 4: return "Downloading update";
-        case 5: return "Verifying update";
-        case 6: return "Applying update";
-        case 7: return "Restoring backup";
-        case 8: return "Decompressing backup";
-        case 9: return "Completed";
-        case 10: return "Failed";
-        default: return "Unknown";
+        case 0: return QStringLiteral("Idle");
+        case 1: return QStringLiteral("Checking connectivity");
+        case 2: return QStringLiteral("Creating backup");
+        case 3: return QStringLiteral("Compressing backup");
+        case 4: return QStringLiteral("Downloading update");
+        case 5: return QStringLiteral("Verifying update");
+        case 6: return QStringLiteral("Applying update");
+        case 7: return QStringLiteral("Restoring backup");
+        case 8: return QStringLiteral("Decompressing backup");
+        case 9: return QStringLiteral("Completed");
+        case 10: return QStringLiteral("Failed");
+        default: return QStringLiteral("Unknown");
     }
 }
 

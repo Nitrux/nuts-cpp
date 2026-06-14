@@ -41,23 +41,23 @@ void Logger::openLogFile() {
 
 QString Logger::levelToString(LogLevel level) const {
     switch (level) {
-        case LogLevel::Debug: return "Debug";
-        case LogLevel::Info: return "Info";
-        case LogLevel::Success: return "Success";
-        case LogLevel::Warning: return "Warning";
-        case LogLevel::Error: return "Error";
-        default: return "Unknown";
+        case LogLevel::Debug: return QStringLiteral("Debug");
+        case LogLevel::Info: return QStringLiteral("Info");
+        case LogLevel::Success: return QStringLiteral("Success");
+        case LogLevel::Warning: return QStringLiteral("Warning");
+        case LogLevel::Error: return QStringLiteral("Error");
+        default: return QStringLiteral("Unknown");
     }
 }
 
 QString Logger::levelToColor(LogLevel level) const {
     switch (level) {
-        case LogLevel::Debug: return "\033[36m";     // Cyan
-        case LogLevel::Info: return "\033[34m";      // Blue
-        case LogLevel::Success: return "\033[32m";   // Green
-        case LogLevel::Warning: return "\033[33m";   // Yellow
-        case LogLevel::Error: return "\033[31m";     // Red
-        default: return "\033[0m";                   // Reset
+        case LogLevel::Debug: return QStringLiteral("\033[36m");     // Cyan
+        case LogLevel::Info: return QStringLiteral("\033[34m");      // Blue
+        case LogLevel::Success: return QStringLiteral("\033[32m");   // Green
+        case LogLevel::Warning: return QStringLiteral("\033[33m");   // Yellow
+        case LogLevel::Error: return QStringLiteral("\033[31m");     // Red
+        default: return QStringLiteral("\033[0m");                   // Reset
     }
 }
 
@@ -66,10 +66,10 @@ void Logger::log(LogLevel level, const QString& message) {
 
     QString timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
     QString levelStr = levelToString(level);
-    QString logEntry = QString("[%1] %2: %3").arg(timestamp, levelStr, message);
+    QString logEntry = QStringLiteral("[%1] %2: %3").arg(timestamp, levelStr, message);
 
     // Write to console with color
-    QString coloredOutput = QString("%1%2:\033[0m %3")
+    QString coloredOutput = QStringLiteral("%1%2:\033[0m %3")
                                .arg(levelToColor(level), levelStr, message);
 
     if (level == LogLevel::Error) {

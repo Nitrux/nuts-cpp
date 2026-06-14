@@ -24,14 +24,14 @@ qint64 parseContentRangeSize(const QByteArray& rawHeader) {
         return 0;
     }
 
-    const QRegularExpression matchExpression(R"(bytes\s+\d+-\d+/(\d+|\*))");
+    const QRegularExpression matchExpression(QStringLiteral("bytes\\s+\\d+-\\d+/(\\d+|\\*)"));
     const QRegularExpressionMatch match = matchExpression.match(QString::fromLatin1(rawHeader));
     if (!match.hasMatch()) {
         return 0;
     }
 
     const QString total = match.captured(1);
-    if (total == "*") {
+    if (total == QStringLiteral("*")) {
         return 0;
     }
 
@@ -46,7 +46,7 @@ qint64 extractRemoteSize(QNetworkReply* reply, bool preferContentRange) {
     }
 
     if (preferContentRange) {
-        const qint64 rangeSize = parseContentRangeSize(reply->rawHeader("Content-Range"));
+        const qint64 rangeSize = parseContentRangeSize(reply->rawHeader(QByteArrayLiteral("Content-Range")));
         if (rangeSize > 0) {
             return rangeSize;
         }
@@ -58,7 +58,7 @@ qint64 extractRemoteSize(QNetworkReply* reply, bool preferContentRange) {
     }
 
     if (!preferContentRange) {
-        const qint64 rangeSize = parseContentRangeSize(reply->rawHeader("Content-Range"));
+        const qint64 rangeSize = parseContentRangeSize(reply->rawHeader(QByteArrayLiteral("Content-Range")));
         if (rangeSize > 0) {
             return rangeSize;
         }
@@ -74,19 +74,40 @@ SystemInterface::SystemInterface(QObject* parent)
     : QObject(parent) {
 }
 
+static QStringList toQStringList(std::initializer_list<const char*> arguments)
+{
+    QStringList list;
+    list.reserve(static_cast<qsizetype>(arguments.size()));
+    for (const char* argument : arguments)
+        list.append(QString::fromUtf8(argument));
+    return list;
+}
+
+bool SystemInterface::executeCommand(const char* program, std::initializer_list<const char*> arguments,
+                                     QString& output, QString& error, int timeout)
+{
+    return executeCommand(QString::fromUtf8(program), toQStringList(arguments), output, error, timeout);
+}
+
+bool SystemInterface::executeCommand(const char* program, const QStringList& arguments,
+                                     QString& output, QString& error, int timeout)
+{
+    return executeCommand(QString::fromUtf8(program), arguments, output, error, timeout);
+}
+
 bool SystemInterface::executeCommand(const QString& program, const QStringList& arguments,
                                      QString& output, QString& error, int timeout) {
     // Log the full command being run for troubleshooting
-    QString cmdLine = program + (arguments.isEmpty() ? QString() : " " + arguments.join(' '));
-    Logger::instance().debug("EXEC: " + cmdLine);
+    QString cmdLine = program + (arguments.isEmpty() ? QString() : QStringLiteral(" ") + arguments.join(QStringLiteral(" ")));
+    Logger::instance().debug(QStringLiteral("EXEC: ") + cmdLine);
 
     QProcess process;
     process.start(program, arguments);
 
     if (!process.waitForFinished(timeout)) {
-        error = "Command timed out";
+        error = QStringLiteral("Command timed out");
         process.kill();
-        Logger::instance().debug("EXEC TIMEOUT: " + cmdLine);
+        Logger::instance().debug(QStringLiteral("EXEC TIMEOUT: ") + cmdLine);
         return false;
     }
 
@@ -95,10 +116,10 @@ bool SystemInterface::executeCommand(const QString& program, const QStringList& 
 
     int exitCode = process.exitCode();
     if (!output.trimmed().isEmpty())
-        Logger::instance().debug("STDOUT: " + output.trimmed());
+        Logger::instance().debug(QStringLiteral("STDOUT: ") + output.trimmed());
     if (!error.trimmed().isEmpty())
-        Logger::instance().debug("STDERR: " + error.trimmed());
-    Logger::instance().debug(QString("EXIT(%1): %2").arg(exitCode).arg(cmdLine));
+        Logger::instance().debug(QStringLiteral("STDERR: ") + error.trimmed());
+    Logger::instance().debug(QStringLiteral("EXIT(%1): %2").arg(exitCode).arg(cmdLine));
 
     return exitCode == 0;
 }
@@ -107,15 +128,15 @@ SystemInfo SystemInterface::getSystemInfo() {
     SystemInfo info;
 
     // Read /etc/lsb-release
-    QFile lsbFile("/etc/lsb-release");
+    QFile lsbFile(QStringLiteral("/etc/lsb-release"));
     if (lsbFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QTextStream in(&lsbFile);
         while (!in.atEnd()) {
             QString line = in.readLine();
-            if (line.startsWith("DISTRIB_ID=")) {
-                info.distribution = line.mid(11).remove('"');
-            } else if (line.startsWith("DISTRIB_RELEASE=")) {
-                info.version = line.mid(16).remove('"');
+            if (line.startsWith(QStringLiteral("DISTRIB_ID="))) {
+                info.distribution = line.mid(11).remove(QStringLiteral("\""));
+            } else if (line.startsWith(QStringLiteral("DISTRIB_RELEASE="))) {
+                info.version = line.mid(16).remove(QStringLiteral("\""));
             }
         }
         lsbFile.close();
@@ -135,11 +156,11 @@ SystemInfo SystemInterface::getSystemInfo() {
 QString SystemInterface::getRootPartition() {
     QString output, error;
 
-    if (executeCommand("/usr/bin/findmnt", {"-n", "-o", "SOURCE", "/media/root-ro"}, output, error)) {
+    if (executeCommand("/usr/bin/findmnt", QStringList{QStringLiteral("-n"), QStringLiteral("-o"), QStringLiteral("SOURCE"), QStringLiteral("/media/root-ro")}, output, error)) {
         return output.trimmed();
     }
 
-    if (executeCommand("/usr/bin/findmnt", {"-n", "-o", "SOURCE", "/"}, output, error)) {
+    if (executeCommand("/usr/bin/findmnt", QStringList{QStringLiteral("-n"), QStringLiteral("-o"), QStringLiteral("SOURCE"), QStringLiteral("/")}, output, error)) {
         return output.trimmed();
     }
 
@@ -148,7 +169,7 @@ QString SystemInterface::getRootPartition() {
 
 QString SystemInterface::getPartitionLabel(const QString& device) {
     QString output, error;
-    if (executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "LABEL", device}, output, error)) {
+    if (executeCommand("/usr/sbin/blkid", QStringList{QStringLiteral("-o"), QStringLiteral("value"), QStringLiteral("-s"), QStringLiteral("LABEL"), device}, output, error)) {
         return output.trimmed();
     }
     return QString();
@@ -156,7 +177,7 @@ QString SystemInterface::getPartitionLabel(const QString& device) {
 
 QString SystemInterface::getPartitionFilesystem(const QString& device) {
     QString output, error;
-    if (executeCommand("/usr/sbin/blkid", {"-o", "value", "-s", "TYPE", device}, output, error)) {
+    if (executeCommand("/usr/sbin/blkid", QStringList{QStringLiteral("-o"), QStringLiteral("value"), QStringLiteral("-s"), QStringLiteral("TYPE"), device}, output, error)) {
         return output.trimmed();
     }
     return QString();
@@ -164,7 +185,7 @@ QString SystemInterface::getPartitionFilesystem(const QString& device) {
 
 bool SystemInterface::isOverlayActive() {
     QString output, error;
-    return executeCommand("/usr/bin/mount", {}, output, error) && output.contains("overlayroot");
+    return executeCommand("/usr/bin/mount", QStringList{}, output, error) && output.contains(QStringLiteral("overlayroot"));
 }
 
 bool SystemInterface::checkInternetConnectivity() {
@@ -240,17 +261,17 @@ bool SystemInterface::mountPartition(const QString& device, const QString& mount
 
     if (!directoryExists(mountPoint)) {
         if (!createDirectory(mountPoint)) {
-            Logger::instance().error("Failed to create mount point: " + mountPoint);
+            Logger::instance().error(QStringLiteral("Failed to create mount point: ") + mountPoint);
             return false;
         }
     }
 
-    bool result = executeCommand("/usr/bin/mount", {"-t", "auto", device, mountPoint}, output, error);
+    bool result = executeCommand(QStringLiteral("/usr/bin/mount"), QStringList{QStringLiteral("-t"), QStringLiteral("auto"), device, mountPoint}, output, error);
 
     if (result) {
-        Logger::instance().info("Mounted " + device + " to " + mountPoint);
+        Logger::instance().info(QStringLiteral("Mounted ") + device + QStringLiteral(" to ") + mountPoint);
     } else {
-        Logger::instance().error("Failed to mount " + device + ": " + error);
+        Logger::instance().error(QStringLiteral("Failed to mount ") + device + QStringLiteral(": ") + error);
     }
 
     return result;
@@ -258,12 +279,12 @@ bool SystemInterface::mountPartition(const QString& device, const QString& mount
 
 bool SystemInterface::unmountPartition(const QString& mountPoint) {
     QString output, error;
-    bool result = executeCommand("/usr/bin/umount", {mountPoint}, output, error);
+    bool result = executeCommand(QStringLiteral("/usr/bin/umount"), QStringList{mountPoint}, output, error);
 
     if (result) {
-        Logger::instance().info("Unmounted " + mountPoint);
+        Logger::instance().info(QStringLiteral("Unmounted ") + mountPoint);
     } else {
-        Logger::instance().error("Failed to unmount " + mountPoint + ": " + error);
+        Logger::instance().error(QStringLiteral("Failed to unmount ") + mountPoint + QStringLiteral(": ") + error);
     }
 
     return result;
@@ -271,11 +292,11 @@ bool SystemInterface::unmountPartition(const QString& mountPoint) {
 
 bool SystemInterface::isMounted(const QString& mountPoint) {
     QString output, error;
-    return executeCommand("/usr/bin/mountpoint", {"-q", mountPoint}, output, error);
+    return executeCommand(QStringLiteral("/usr/bin/mountpoint"), QStringList{QStringLiteral("-q"), mountPoint}, output, error);
 }
 
 bool SystemInterface::executeInOverlay(const QStringList& command, QString& output, QString& error) {
-    QString program = "/usr/sbin/overlayroot-chroot";
+    QString program = QStringLiteral("/usr/sbin/overlayroot-chroot");
     return executeCommand(program, command, output, error, 600000);
 }
 
@@ -286,12 +307,12 @@ bool SystemInterface::executeInOverlayAgent(const QStringList& command,
     // The extended timeout (default 2 hours) covers the full OTA pipeline:
     // partition mounting, multi-gigabyte download, dpkg unpack + configure.
     Logger::instance().info(
-        QString("Launching nuts-agent in chroot (timeout %1s)").arg(timeout / 1000));
+        QStringLiteral("Launching nuts-agent in chroot (timeout %1s)").arg(timeout / 1000));
     return executeCommand("/usr/sbin/overlayroot-chroot", command, output, error, timeout);
 }
 
 bool SystemInterface::downloadFile(const QString& url, const QString& destination) {
-    Logger::instance().info("Downloading: " + url);
+    Logger::instance().info(QStringLiteral("Downloading: ") + url);
 
     // Validate URL scheme (only allow HTTP/HTTPS)
     if (!validateURL(url)) {
@@ -300,16 +321,16 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
     }
 
     // Prefer axel for multi-connection downloading.
-    if (QFile::exists("/usr/bin/axel")) {
+    if (QFile::exists(QStringLiteral("/usr/bin/axel"))) {
         // Always remove any stale destination before axel writes it.
         QFile::remove(destination);
         QString output, error;
-        bool ok = executeCommand("/usr/bin/axel",
-                                 {"-n", "10", "-o", destination, url},
+        bool ok = executeCommand(QStringLiteral("/usr/bin/axel"),
+                                 QStringList{QStringLiteral("-n"), QStringLiteral("10"), QStringLiteral("-o"), destination, url},
                                  output, error,
                                  3600000);
         if (ok && QFile::exists(destination)) {
-            Logger::instance().success("Downloaded: " + QFileInfo(destination).fileName());
+            Logger::instance().success(QStringLiteral("Downloaded: ") + QFileInfo(destination).fileName());
             return true;
         }
         Logger::instance().warning("axel download failed, falling back to QNetworkAccessManager");
@@ -317,7 +338,7 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
     }
 
     // Fallback: single-connection streaming via QNetworkAccessManager.
-    QFile::remove(destination + ".partial");
+    QFile::remove(destination  + QStringLiteral(".partial"));
 
     QNetworkAccessManager manager;
 
@@ -326,10 +347,10 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
     request.setTransferTimeout(600000);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
-    QString partialPath = destination + ".partial";
+    QString partialPath = destination  + QStringLiteral(".partial");
     QFile outFile(partialPath);
     if (!outFile.open(QIODevice::WriteOnly)) {
-        Logger::instance().error("Failed to open partial file for writing: " + partialPath);
+        Logger::instance().error(QStringLiteral("Failed to open partial file for writing: ") + partialPath);
         return false;
     }
 
@@ -374,17 +395,17 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
         }
         if (QFile::rename(partialPath, destination)) {
             result = true;
-            Logger::instance().success("Downloaded: " + QFileInfo(destination).fileName());
+            Logger::instance().success(QStringLiteral("Downloaded: ") + QFileInfo(destination).fileName());
         } else {
-            Logger::instance().error("Failed to rename partial file to: " + destination);
+            Logger::instance().error(QStringLiteral("Failed to rename partial file to: ") + destination);
         }
     } else {
         QString err = reply->errorString();
         if (!timeoutTimer.isActive()) {
-            err = "Download timed out";
+            err = QStringLiteral("Download timed out");
         }
         if (!writeError) {
-            Logger::instance().error("Download failed: " + err);
+            Logger::instance().error(QStringLiteral("Download failed: ") + err);
         }
     }
 
@@ -397,13 +418,13 @@ bool SystemInterface::downloadFile(const QString& url, const QString& destinatio
 QString SystemInterface::calculateMD5(const QString& filePath) {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
-        Logger::instance().error("Failed to open file for checksum: " + filePath);
+        Logger::instance().error(QStringLiteral("Failed to open file for checksum: ") + filePath);
         return QString();
     }
 
     QCryptographicHash hash(QCryptographicHash::Md5);
     if (hash.addData(&file)) {
-        return QString(hash.result().toHex());
+        return QString::fromLatin1(hash.result().toHex());
     }
 
     return QString();
@@ -412,13 +433,13 @@ QString SystemInterface::calculateMD5(const QString& filePath) {
 QString SystemInterface::calculateSHA256(const QString& filePath) {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
-        Logger::instance().error("Failed to open file for SHA256: " + filePath);
+        Logger::instance().error(QStringLiteral("Failed to open file for SHA256: ") + filePath);
         return QString();
     }
 
     QCryptographicHash hash(QCryptographicHash::Sha256);
     if (hash.addData(&file)) {
-        return QString(hash.result().toHex());
+        return QString::fromLatin1(hash.result().toHex());
     }
 
     return QString();
@@ -443,29 +464,29 @@ bool SystemInterface::verifyChecksum(const QString& filePath, const QString& exp
     bool matches = actualChecksum.compare(expectedChecksum, Qt::CaseInsensitive) == 0;
 
     if (matches) {
-        Logger::instance().success("Checksum verification passed for " + QFileInfo(filePath).fileName());
+        Logger::instance().success(QStringLiteral("Checksum verification passed for ") + QFileInfo(filePath).fileName());
     } else {
-        Logger::instance().error("Checksum verification failed for " + QFileInfo(filePath).fileName());
-        Logger::instance().error("Expected: " + expectedChecksum);
-        Logger::instance().error("Actual: " + actualChecksum);
+        Logger::instance().error(QStringLiteral("Checksum verification failed for ") + QFileInfo(filePath).fileName());
+        Logger::instance().error(QStringLiteral("Expected: ") + expectedChecksum);
+        Logger::instance().error(QStringLiteral("Actual: ") + actualChecksum);
     }
 
     return matches;
 }
 
 bool SystemInterface::verifyGPGSignature(const QString& dataFile, const QString& signatureFile) {
-    const QString publicKeyRing = "/usr/share/nuts/keys/nitrux-updates.gpg";
+    const QString publicKeyRing = QStringLiteral("/usr/share/nuts/keys/nitrux-updates.gpg");
 
     if (!QFile::exists(publicKeyRing)) {
-        Logger::instance().error("CRITICAL: Public keyring not found at " + publicKeyRing);
+        Logger::instance().error(QStringLiteral("CRITICAL: Public keyring not found at ") + publicKeyRing);
         Logger::instance().error("Cannot verify update authenticity without the public key.");
         return false;
     }
 
-    QString program = "/usr/bin/gpgv";
+    QString program = QStringLiteral("/usr/bin/gpgv");
     
     QStringList args;
-    args << "--keyring" << publicKeyRing
+    args << QStringLiteral("--keyring") << publicKeyRing
          << signatureFile
          << dataFile;
 
@@ -473,10 +494,10 @@ bool SystemInterface::verifyGPGSignature(const QString& dataFile, const QString&
     bool result = executeCommand(program, args, output, error);
 
     if (result) {
-        Logger::instance().success("GPG signature verified successfully for " + QFileInfo(dataFile).fileName());
+        Logger::instance().success(QStringLiteral("GPG signature verified successfully for ") + QFileInfo(dataFile).fileName());
     } else {
         Logger::instance().error("SECURITY ALERT: GPG signature verification FAILED");
-        Logger::instance().error("GPGv Output: " + error);
+        Logger::instance().error(QStringLiteral("GPGv Output: ") + error);
     }
 
     return result;
@@ -492,8 +513,8 @@ qint64 SystemInterface::getRemoteFileSize(const QString& url) {
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
         if (useRangeRequest) {
-            request.setRawHeader("Range", "bytes=0-0");
-            request.setRawHeader("Accept-Encoding", "identity");
+            request.setRawHeader(QByteArrayLiteral("Range"), QByteArrayLiteral("bytes=0-0"));
+            request.setRawHeader(QByteArrayLiteral("Accept-Encoding"), QByteArrayLiteral("identity"));
         }
 
         QNetworkReply* reply = useRangeRequest ? manager.get(request) : manager.head(request);
@@ -575,9 +596,9 @@ bool SystemInterface::createDirectory(const QString& path) {
     bool result = dir.mkpath(path);
 
     if (result) {
-        Logger::instance().info("Created directory: " + path);
+        Logger::instance().info(QStringLiteral("Created directory: ") + path);
     } else {
-        Logger::instance().error("Failed to create directory: " + path);
+        Logger::instance().error(QStringLiteral("Failed to create directory: ") + path);
     }
 
     return result;
@@ -587,7 +608,7 @@ bool SystemInterface::createSecureDirectory(const QString& path) {
     QDir dir;
     // mkpath returns true if directory exists or was created
     if (!dir.mkpath(path)) {
-        Logger::instance().error("Failed to create secure directory: " + path);
+        Logger::instance().error(QStringLiteral("Failed to create secure directory: ") + path);
         return false;
     }
     
@@ -602,20 +623,20 @@ bool SystemInterface::enforceSecurePermissions(const QString& path) {
     // Open file descriptor, failing if it's a symlink (O_NOFOLLOW)
     int fd = ::open(pathStr, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     if (fd == -1) {
-        Logger::instance().error("SECURITY: Failed to open directory securely (possible symlink or non-existent): " + path);
+        Logger::instance().error(QStringLiteral("SECURITY: Failed to open directory securely (possible symlink or non-existent): ") + path);
         return false;
     }
 
     struct stat st;
     if (::fstat(fd, &st) == -1) {
-        Logger::instance().error("Failed to fstat directory: " + path);
+        Logger::instance().error(QStringLiteral("Failed to fstat directory: ") + path);
         ::close(fd);
         return false;
     }
 
     // Ensure ownership is root (0). Use fchown on the file descriptor.
     if (st.st_uid != 0) {
-        Logger::instance().warning("Directory not owned by root! Attempting to seize ownership: " + path);
+        Logger::instance().warning(QStringLiteral("Directory not owned by root! Attempting to seize ownership: ") + path);
         
         if (::fchown(fd, 0, 0) != 0) {
              Logger::instance().error("SECURITY FAILURE: Failed to claim ownership of directory. Aborting.");
@@ -626,13 +647,13 @@ bool SystemInterface::enforceSecurePermissions(const QString& path) {
 
     // Set permissions to 0700 (owner read/write/execute only) using fchmod
     if (::fchmod(fd, S_IRUSR | S_IWUSR | S_IXUSR) != 0) {
-        Logger::instance().error("Failed to set secure permissions on: " + path);
+        Logger::instance().error(QStringLiteral("Failed to set secure permissions on: ") + path);
         ::close(fd);
         return false;
     }
 
     ::close(fd);
-    Logger::instance().info("Enforced secure permissions (0700, root:root) on: " + path);
+    Logger::instance().info(QStringLiteral("Enforced secure permissions (0700, root:root) on: ") + path);
     return true;
 }
 
@@ -668,9 +689,9 @@ qint64 SystemInterface::getAvailableSpace(const QString& path) {
 bool SystemInterface::validatePath(const QString& path, const QString& allowedPrefix,
                                    bool logError) {
     // Check for path traversal sequences
-    if (path.contains("../") || path.contains("..\\")) {
+    if (path.contains(QStringLiteral("../")) || path.contains(QStringLiteral("..\\"))) {
         if (logError)
-            Logger::instance().error("SECURITY: Path traversal sequence detected: " + path);
+            Logger::instance().error(QStringLiteral("SECURITY: Path traversal sequence detected: ") + path);
         return false;
     }
 
@@ -683,7 +704,7 @@ bool SystemInterface::validatePath(const QString& path, const QString& allowedPr
         QDir parentDir = fileInfo.dir();
         QString canonicalParent = parentDir.canonicalPath();
         if (!canonicalParent.isEmpty()) {
-            canonicalPath = canonicalParent + "/" + fileInfo.fileName();
+            canonicalPath = canonicalParent + QStringLiteral("/") + fileInfo.fileName();
         } else {
             // If parent doesn't exist, use absolute path
             canonicalPath = fileInfo.absoluteFilePath();
@@ -693,8 +714,8 @@ bool SystemInterface::validatePath(const QString& path, const QString& allowedPr
     // Ensure path doesn't escape allowed directory
     if (!allowedPrefix.isEmpty() && !canonicalPath.startsWith(allowedPrefix)) {
         if (logError) {
-            Logger::instance().error("SECURITY: Path escapes allowed directory: " + path);
-            Logger::instance().error("Canonical: " + canonicalPath + ", Allowed: " + allowedPrefix);
+            Logger::instance().error(QStringLiteral("SECURITY: Path escapes allowed directory: ") + path);
+            Logger::instance().error(QStringLiteral("Canonical: ") + canonicalPath + QStringLiteral(", Allowed: ") + allowedPrefix);
         }
         return false;
     }
@@ -706,31 +727,31 @@ bool SystemInterface::validateURL(const QString& url) {
     QUrl qurl(url);
 
     if (!qurl.isValid()) {
-        Logger::instance().error("SECURITY: Invalid URL: " + url);
+        Logger::instance().error(QStringLiteral("SECURITY: Invalid URL: ") + url);
         return false;
     }
 
     // Only allow HTTP and HTTPS protocols
     QString scheme = qurl.scheme().toLower();
-    if (scheme != "http" && scheme != "https") {
-        Logger::instance().error("SECURITY: Invalid URL scheme (only http/https allowed): " + scheme);
+    if (scheme != QStringLiteral("http") && scheme != QStringLiteral("https")) {
+        Logger::instance().error(QStringLiteral("SECURITY: Invalid URL scheme (only http/https allowed): ") + scheme);
         return false;
     }
 
     // Prevent access to localhost and internal networks (optional based on requirements)
     QString host = qurl.host().toLower();
-    if (host == "localhost" || host == "127.0.0.1" || host == "::1" ||
-        host.startsWith("192.168.") || host.startsWith("10.") ||
-        host.startsWith("172.16.") || host.startsWith("172.17.") ||
-        host.startsWith("172.18.") || host.startsWith("172.19.") ||
-        host.startsWith("172.20.") || host.startsWith("172.21.") ||
-        host.startsWith("172.22.") || host.startsWith("172.23.") ||
-        host.startsWith("172.24.") || host.startsWith("172.25.") ||
-        host.startsWith("172.26.") || host.startsWith("172.27.") ||
-        host.startsWith("172.28.") || host.startsWith("172.29.") ||
-        host.startsWith("172.30.") || host.startsWith("172.31.") ||
-        host.startsWith("169.254.")) {
-        Logger::instance().error("SECURITY: Internal network URL blocked: " + url);
+    if (host == QStringLiteral("localhost") || host == QStringLiteral("127.0.0.1") || host == QStringLiteral("::1") ||
+        host.startsWith(QStringLiteral("192.168.")) || host.startsWith(QStringLiteral("10.")) ||
+        host.startsWith(QStringLiteral("172.16.")) || host.startsWith(QStringLiteral("172.17.")) ||
+        host.startsWith(QStringLiteral("172.18.")) || host.startsWith(QStringLiteral("172.19.")) ||
+        host.startsWith(QStringLiteral("172.20.")) || host.startsWith(QStringLiteral("172.21.")) ||
+        host.startsWith(QStringLiteral("172.22.")) || host.startsWith(QStringLiteral("172.23.")) ||
+        host.startsWith(QStringLiteral("172.24.")) || host.startsWith(QStringLiteral("172.25.")) ||
+        host.startsWith(QStringLiteral("172.26.")) || host.startsWith(QStringLiteral("172.27.")) ||
+        host.startsWith(QStringLiteral("172.28.")) || host.startsWith(QStringLiteral("172.29.")) ||
+        host.startsWith(QStringLiteral("172.30.")) || host.startsWith(QStringLiteral("172.31.")) ||
+        host.startsWith(QStringLiteral("169.254."))) {
+        Logger::instance().error(QStringLiteral("SECURITY: Internal network URL blocked: ") + url);
         return false;
     }
 
@@ -739,16 +760,16 @@ bool SystemInterface::validateURL(const QString& url) {
 
 QString SystemInterface::sanitizeVersionString(const QString& version) {
     // Only allow alphanumeric characters, dots, hyphens, and underscores
-    QRegularExpression validChars("^[a-zA-Z0-9._-]+$");
+    QRegularExpression validChars(QStringLiteral("^[a-zA-Z0-9._-]+$"));
 
     if (!validChars.match(version).hasMatch()) {
-        Logger::instance().error("SECURITY: Invalid version string contains disallowed characters: " + version);
+        Logger::instance().error(QStringLiteral("SECURITY: Invalid version string contains disallowed characters: ") + version);
         return QString();
     }
 
     // Additional check: prevent excessive length
     if (version.length() > 64) {
-        Logger::instance().error("SECURITY: Version string too long: " + version);
+        Logger::instance().error(QStringLiteral("SECURITY: Version string too long: ") + version);
         return QString();
     }
 
