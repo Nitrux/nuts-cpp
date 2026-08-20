@@ -10,7 +10,7 @@ Maui.ApplicationWindow {
 
     // Debug flags for testing UI states
     readonly property bool debugMode: false  // Set to true to test update UI
-    readonly property bool debugUpdateAvailable: debugMode ? true : nutsClient.updateAvailable
+    readonly property bool debugUpdateAvailable: debugMode ? false : nutsClient.updateAvailable
     readonly property string debugUpdateVersion: debugMode ? "6.0.0" : nutsClient.updateVersion
     readonly property string debugUpdateSize: debugMode ? "1.5 GB" : nutsClient.updateSize
     readonly property string debugUpdateNotes: debugMode ? "Nitrux 6.0.0 combines the latest software updates, bug fixes, and performance improvements with ready-to-use hardware support. This release continues the evolution of our immutable foundation.\n\n• Improved system stability\n\n• Updated kernel to 6.18.6\n\n• Performance improvements\n\n• Bug fixes and security updates\n\n [Learn more...](https://nxos.org/changelog/release-announcement-nitrux-6-0-0/)" : nutsClient.updateNotes
@@ -116,7 +116,7 @@ Maui.ApplicationWindow {
         headBar.visible: true
 
         headBar.leftContent: [
-            Button {
+            ToolButton {
                 display: AbstractButton.IconOnly
                 icon.name: "folder-download"
                 enabled: nutsClient.connected && !nutsClient.busy && debugUpdateAvailable
@@ -127,7 +127,7 @@ Maui.ApplicationWindow {
                 ToolTip.text: qsTr("Update System")
             },
 
-            Button {
+            ToolButton {
                 display: AbstractButton.IconOnly
                 icon.name: "system-help"
                 enabled: (debugMode || (nutsClient.connected && !nutsClient.busy && nutsClient.isLiveSession))
@@ -142,7 +142,7 @@ Maui.ApplicationWindow {
         ]
 
         headBar.rightContent: [
-            Button {
+            ToolButton {
                 display: AbstractButton.IconOnly
                 icon.name: "view-refresh"
                 enabled: nutsClient.connected && !nutsClient.busy
@@ -184,92 +184,163 @@ Maui.ApplicationWindow {
                 Layout.fillWidth: true
                 text1: qsTr("System Status")
                 text2: qsTr("Current system information and update status.")
+                label2.wrapMode: Text.Wrap
             }
 
-            Maui.FlexSectionItem {
-                label1.text: qsTr("Distribution")
-                label2.text: nutsClient.distributionInfo || qsTr("Unknown")
-                visible: false
-            }
-
-            Maui.FlexSectionItem {
-                label1.text: qsTr("Status")
-                label2.text: (debugMode && (debugSimulatingUpdate || debugSimulatingRescue))
-                            ? debugProgressMessage
-                            : (nutsClient.statusMessage || qsTr("Ready to update"))
-                label2.color: nutsClient.connected ? Maui.Theme.positiveTextColor : Maui.Theme.neutralTextColor
-            }
-
-            ProgressBar {
+            Rectangle {
                 Layout.fillWidth: true
-                value: (debugMode && (debugSimulatingUpdate || debugSimulatingRescue))
-                      ? debugProgress / 100.0
-                      : nutsClient.progressPercentage / 100.0
+                color: Maui.Theme.alternateBackgroundColor
+                radius: Maui.Style.radiusV
+                border.color: Maui.Theme.backgroundColor
+                border.width: 1
+                implicitHeight: progressLayout.implicitHeight + Maui.Style.contentMargins * 2
+
+                ColumnLayout {
+                    id: progressLayout
+                    anchors.fill: parent
+                    anchors.margins: Maui.Style.contentMargins
+                    spacing: Maui.Style.space.small
+
+                    Maui.SectionHeader {
+                        Layout.fillWidth: true
+                        text1: qsTr("Operation Progress")
+                        text2: qsTr("Track the current update or rescue operation.")
+                        label2.wrapMode: Text.Wrap
+                    }
+
+                    Maui.FlexSectionItem {
+                        Layout.fillWidth: true
+                        flat: true
+                        label1.text: qsTr("Distribution")
+                        label2.text: nutsClient.distributionInfo || qsTr("Unknown")
+                        label2.wrapMode: Text.Wrap
+                        visible: false
+                    }
+
+                    Maui.FlexSectionItem {
+                        Layout.fillWidth: true
+                        flat: true
+                        label1.text: qsTr("Status")
+                        label2.text: (debugMode && (debugSimulatingUpdate || debugSimulatingRescue))
+                                    ? debugProgressMessage
+                                    : (nutsClient.statusMessage || qsTr("Ready to update"))
+                        label2.color: nutsClient.connected
+                                      ? Maui.Theme.positiveTextColor
+                                      : Maui.Theme.neutralTextColor
+                        label2.wrapMode: Text.Wrap
+                    }
+
+                    ProgressBar {
+                        Layout.fillWidth: true
+                        value: (debugMode && (debugSimulatingUpdate || debugSimulatingRescue))
+                               ? debugProgress / 100.0
+                               : nutsClient.progressPercentage / 100.0
+                    }
+                }
             }
-
         }
 
-        Maui.Holder {
-            anchors.fill: parent
-            visible: !((debugMode && (debugSimulatingUpdate || debugSimulatingRescue)) || nutsClient.busy) && !debugUpdateAvailable
-            emoji: nutsClient.connected ? "dialog-ok-apply" : "network-disconnect"
-            title: nutsClient.connected
-                   ? qsTr("No Updates Available")
-                   : qsTr("Helper Disconnected")
-            body: nutsClient.connected
-                  ? qsTr("Your system is up to date.")
-                  : qsTr("The update helper service is not running.")
-        }
-
-        // iOS-style update details view
         Maui.ScrollColumn {
             anchors.fill: parent
             spacing: Maui.Style.space.big
-            visible: !((debugMode && (debugSimulatingUpdate || debugSimulatingRescue)) || nutsClient.busy) && debugUpdateAvailable
+            visible: !((debugMode && (debugSimulatingUpdate || debugSimulatingRescue)) || nutsClient.busy)
+                     && !debugUpdateAvailable
 
-            // Update info with section header and button
-            RowLayout {
+            Maui.SectionHeader {
                 Layout.fillWidth: true
-                spacing: Maui.Style.space.medium
-
-                Maui.SectionHeader {
-                    Layout.fillWidth: true
-                    text1: qsTr("Software Update")
-                    text2: qsTr("A new system update is available.")
-                }
-
-                Button {
-                    text: qsTr("Update Now")
-                    onClicked: updateDialog.open()
-                }
+                text1: qsTr("System Status")
+                text2: qsTr("Current system information and update status.")
+                label2.wrapMode: Text.Wrap
             }
 
-            // Version and size info
-            RowLayout {
+            Rectangle {
                 Layout.fillWidth: true
-                spacing: Maui.Style.space.medium
+                color: Maui.Theme.alternateBackgroundColor
+                radius: Maui.Style.radiusV
+                border.color: Maui.Theme.backgroundColor
+                border.width: 1
+                implicitHeight: updateStatusLayout.implicitHeight + Maui.Style.contentMargins * 2
 
-                Maui.Icon {
-                    source: "live-installer"
-                    implicitHeight: Maui.Style.iconSizes.big
-                    implicitWidth: Maui.Style.iconSizes.big
-                }
+                ColumnLayout {
+                    id: updateStatusLayout
+                    anchors.fill: parent
+                    anchors.margins: Maui.Style.contentMargins
+                    spacing: Maui.Style.space.small
 
-                Maui.SectionHeader {
-                    Layout.fillWidth: true
-                    text1: qsTr("Nitrux ") + debugUpdateVersion
-                    text2: debugUpdateSize
+                    Maui.SectionHeader {
+                        Layout.fillWidth: true
+                        text1: qsTr("Update Status")
+                        text2: qsTr("Current update availability and helper connection state.")
+                        label2.wrapMode: Text.Wrap
+                    }
+
+                    Maui.Holder {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 300
+                        emoji: nutsClient.connected ? "dialog-ok-apply" : "network-disconnect"
+                        title: nutsClient.connected
+                               ? qsTr("No Updates Available")
+                               : qsTr("Helper Disconnected")
+                        body: nutsClient.connected
+                              ? qsTr("Your system is up to date.")
+                              : qsTr("The update helper service is not running.")
+                    }
                 }
             }
+        }
 
-            // Release notes
-            Label {
+        Maui.ScrollColumn {
+            anchors.fill: parent
+            spacing: Maui.Style.space.big
+            visible: !((debugMode && (debugSimulatingUpdate || debugSimulatingRescue)) || nutsClient.busy)
+                     && debugUpdateAvailable
+
+            Maui.SectionHeader {
                 Layout.fillWidth: true
-                Layout.leftMargin: Maui.Style.space.big
-                Layout.rightMargin: Maui.Style.space.big
-                text: debugUpdateNotes
-                wrapMode: Text.WordWrap
-                textFormat: Text.MarkdownText
+                text1: qsTr("Software Update")
+                text2: qsTr("A new system update is available.")
+                label2.wrapMode: Text.Wrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                color: Maui.Theme.alternateBackgroundColor
+                radius: Maui.Style.radiusV
+                border.color: Maui.Theme.backgroundColor
+                border.width: 1
+                implicitHeight: updateDetailsLayout.implicitHeight + Maui.Style.contentMargins * 2
+
+                ColumnLayout {
+                    id: updateDetailsLayout
+                    anchors.fill: parent
+                    anchors.margins: Maui.Style.contentMargins
+                    spacing: Maui.Style.space.small
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Maui.Style.space.medium
+
+                        Maui.Icon {
+                            source: "live-installer"
+                            implicitHeight: Maui.Style.iconSizes.big
+                            implicitWidth: Maui.Style.iconSizes.big
+                        }
+
+                        Maui.SectionHeader {
+                            Layout.fillWidth: true
+                            text1: qsTr("Nitrux ") + debugUpdateVersion
+                            text2: debugUpdateSize
+                            label2.wrapMode: Text.Wrap
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: debugUpdateNotes
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.MarkdownText
+                    }
+                }
             }
         }
     }
