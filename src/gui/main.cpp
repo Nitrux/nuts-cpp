@@ -40,7 +40,8 @@ int main(int argc, char* argv[]) {
                      QStringLiteral("3.0.0"),
                      i18n("A simple utility to update Nitrux."),
                      KAboutLicense::BSD_3_Clause,
-                     i18n("© %1 Made by Nitrux | Built with MauiKit", QString::number(QDate::currentDate().year())));
+                     i18n("© %1 Made by Nitrux | Built with MauiKit", QString::number(QDate::currentDate().year())),
+                     QString(GIT_BRANCH) + "/" + QString(GIT_COMMIT_HASH));
 
     about.addAuthor(QStringLiteral("Uri Herrera"), i18n("Developer"), QStringLiteral("uri_herrera@nxos.org"));
     about.setHomepage(QStringLiteral("https://nxos.org"));
