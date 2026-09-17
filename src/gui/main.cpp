@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
                      i18n("A simple utility to update Nitrux."),
                      KAboutLicense::BSD_3_Clause,
                      i18n("© %1 Made by Nitrux | Built with MauiKit", QString::number(QDate::currentDate().year())),
-                     QString(GIT_BRANCH) + "/" + QString(GIT_COMMIT_HASH));
+                     QString::fromUtf8(GIT_BRANCH) + QStringLiteral("/") + QString::fromUtf8(GIT_COMMIT_HASH));
 
     about.addAuthor(QStringLiteral("Uri Herrera"), i18n("Developer"), QStringLiteral("uri_herrera@nxos.org"));
     about.setHomepage(QStringLiteral("https://nxos.org"));
