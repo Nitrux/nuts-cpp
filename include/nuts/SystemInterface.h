@@ -10,6 +10,7 @@
 #include <QProcess>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <functional>
 #include <initializer_list>
 
 namespace Nuts {
@@ -42,7 +43,8 @@ public:
     // Long-running variant for the single agent call.
     // Timeout defaults to 7200000 ms (2 hours) to cover the full update pipeline.
     bool executeInOverlayAgent(const QStringList& command, QString& output,
-                               QString& error, int timeout = 7200000);
+                               QString& error, int timeout = 7200000,
+                               const std::function<void(const QString&)>& outputHandler = {});
 
     // File operations
     bool downloadFile(const QString& url, const QString& destination);

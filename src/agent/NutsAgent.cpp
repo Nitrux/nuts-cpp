@@ -124,6 +124,7 @@ bool Agent::exec(const QString& program, const QStringList& args, QString* outPt
 
     QString out  = QString::fromUtf8(proc.readAllStandardOutput());
     QString err  = QString::fromUtf8(proc.readAllStandardError());
+    int code = proc.exitCode();
 
     if (!out.trimmed().isEmpty()) {
         // Forward child stdout to our stdout so the parent captures it.
@@ -134,13 +135,12 @@ bool Agent::exec(const QString& program, const QStringList& args, QString* outPt
     if (!err.trimmed().isEmpty()) {
         // Route child stderr through the structured log format on stdout so
         // UpdateManager::parseAndRelayAgentOutput() captures and forwards it to
-        // the Logger.  This avoids dpkg/axel errors being silently discarded
-        // when the parent reads only agentOutput (stdout).
+        // the Logger.  Successful commands may also use stderr for progress
+        // or informational output, so only failed commands are errors.
         for (const QString& line : err.split(QStringLiteral("\n"), Qt::SkipEmptyParts))
-            log("ERROR", line);
+            log(code == 0 ? "DEBUG" : "ERROR", line);
     }
 
-    int code = proc.exitCode();
     log("DEBUG", QStringLiteral("EXIT(%1): %2").arg(code).arg(program));
     return code == 0;
 }
@@ -286,6 +286,38 @@ bool Agent::prepareSystemPartitions()
     mountOk = exec(QStringLiteral("/usr/bin/mount"), QStringList{QStringLiteral("-t"), QStringLiteral("auto"), varLibDev, QStringLiteral("/var/lib")});
     log("DEBUG", QStringLiteral("mount %1 /var/lib: %2")
         .arg(varLibDev, mountOk ? QStringLiteral("ok") : QStringLiteral("failed (may already be mounted)")));
+
+    // --- Mount the EFI System Partition when running in UEFI mode ---
+    if (QDir(QStringLiteral("/sys/firmware/efi")).exists() || !m_params.efiDevice.isEmpty()) {
+        log("DEBUG", "Checking EFI System Partition mount...");
+        if (exec("/usr/bin/mountpoint", {QStringLiteral("-q"), QStringLiteral("/boot/efi")})) {
+            log("INFO", "EFI System Partition already mounted at /boot/efi.");
+        } else {
+            if (!exec("/usr/bin/mkdir", {QStringLiteral("-p"), QStringLiteral("/boot/efi")})) {
+                log("ERROR", "Could not create /boot/efi.");
+                return false;
+            }
+            bool efiMountOk = false;
+            if (!m_params.efiDevice.isEmpty()) {
+                log("INFO", QStringLiteral("EFI device from host: ") + m_params.efiDevice);
+                efiMountOk = exec("/usr/bin/mount",
+                                  {QStringLiteral("-t"), QStringLiteral("auto"),
+                                   m_params.efiDevice, QStringLiteral("/boot/efi")});
+                if (!efiMountOk)
+                    log("WARNING", "Mounting the host EFI device failed; trying the target fstab entry.");
+            }
+            if (!efiMountOk)
+                efiMountOk = exec("/usr/bin/mount", {QStringLiteral("/boot/efi")});
+            if (!efiMountOk) {
+                log("ERROR", "Could not mount the EFI System Partition at /boot/efi.");
+                return false;
+            }
+            m_efiMountedByAgent = true;
+            log("INFO", "EFI System Partition mounted at /boot/efi.");
+        }
+    } else {
+        log("DEBUG", "UEFI firmware interface not present; skipping EFI System Partition mount.");
+    }
 
     // --- Create working directories ---
     exec("/usr/bin/mkdir", QStringList{QStringLiteral("-p"), m_params.downloadDir});
@@ -589,7 +621,7 @@ bool Agent::performPackageUpdates()
         log("INFO", QStringLiteral("Configuration pass %1/%2...").arg(pass).arg(maxPasses));
 
         // --configure -a: ignore non-zero (may be partial).
-        exec(m_pkgManagerPath, QStringList{QStringLiteral("--force-all"), QStringLiteral("--configure"), QStringLiteral("-a")});
+        exec(m_pkgManagerPath, QStringList{QStringLiteral("--force-all"), QStringLiteral("--force-confnew"), QStringLiteral("--configure"), QStringLiteral("-a")});
 
         // --audit: what's still broken?
         QString auditOutput;
@@ -694,6 +726,13 @@ void Agent::cleanup()
         bool ok = exec(QStringLiteral("/usr/bin/umount"), QStringList{mp});
         log("DEBUG", QStringLiteral("umount %1: %2").arg(mp, ok ? QStringLiteral("ok") : QStringLiteral("failed (may not be mounted)")));
     };
+
+    if (m_efiMountedByAgent) {
+        const bool ok = exec(QStringLiteral("/usr/bin/umount"), QStringList{QStringLiteral("/boot/efi")});
+        log("DEBUG", QStringLiteral("umount /boot/efi: %1").arg(ok ? QStringLiteral("ok") : QStringLiteral("failed")));
+        if (ok)
+            m_efiMountedByAgent = false;
+    }
 
     umount(m_params.squashfsDir);
     umount(QStringLiteral("/home"));

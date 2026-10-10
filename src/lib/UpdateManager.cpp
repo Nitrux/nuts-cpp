@@ -360,6 +360,22 @@ bool UpdateManager::applyUpdate() {
     Logger::instance().info(QStringLiteral("NVIDIA hardware detected on host: %1")
                             .arg(hasNvidia ? QStringLiteral("yes") : QStringLiteral("no")));
 
+    // The EFI System Partition is mounted on the host but is outside the
+    // chroot root.  Pass its device to nuts-agent so it can mount the same
+    // partition at /boot/efi inside the update environment.
+    QString efiDevice;
+    QString efiError;
+    if (m_sysInterface->executeCommand(
+            QStringLiteral("/usr/bin/findmnt"),
+            QStringList{QStringLiteral("-n"), QStringLiteral("-o"), QStringLiteral("SOURCE"),
+                        QStringLiteral("--target"), QStringLiteral("/boot/efi")},
+            efiDevice, efiError)) {
+        efiDevice = efiDevice.trimmed();
+        Logger::instance().info(QStringLiteral("EFI device on host: ") + efiDevice);
+    } else {
+        Logger::instance().debug("EFI partition is not mounted on the host; the agent will use the target fstab entry.");
+    }
+
     // Write the parameter file that nuts-agent reads when it starts.
     //
     // Path constraints: the file must be visible inside overlayroot-chroot,
@@ -372,7 +388,7 @@ bool UpdateManager::applyUpdate() {
     const QString paramFile = QStringLiteral("/run/nuts-agent-params.ini");
     QFile::remove(paramFile);  // Remove any stale file from a previous run.
 
-    if (!writeAgentParams(paramFile, hasNvidia)) {
+    if (!writeAgentParams(paramFile, hasNvidia, efiDevice)) {
         Logger::instance().error("Failed to write agent parameter file");
         QFile::remove(lockPath);
         return false;
@@ -390,16 +406,23 @@ bool UpdateManager::applyUpdate() {
     bool agentOk = m_sysInterface->executeInOverlayAgent(
         QStringList{QStringLiteral("/usr/sbin/nuts-agent"), paramFile},
         agentOutput,
-        agentError);
+        agentError,
+        7200000,
+        [this](const QString& line) { relayAgentProgress(line); });
 
-    // Parse the agent's structured output and relay progress/log lines.
-    parseAndRelayAgentOutput(agentOutput);
+    // Parse the agent's structured output and relay progress/log lines.  The
+    // chroot helper does not reliably propagate the agent's exit status, so
+    // require an explicit successful result from the agent as well.
+    const bool agentReportedSuccess = parseAndRelayAgentOutput(agentOutput, false);
 
     // Clean up the parameter file regardless of outcome.
     QFile::remove(paramFile);
 
-    if (!agentOk) {
-        Logger::instance().error("nuts-agent exited with failure");
+    if (!agentOk || !agentReportedSuccess) {
+        if (!agentOk)
+            Logger::instance().error("nuts-agent exited with failure");
+        else
+            Logger::instance().error("nuts-agent did not report successful completion");
         if (!agentError.trimmed().isEmpty())
             Logger::instance().error(QStringLiteral("Agent stderr: ") + agentError.trimmed());
         QFile::remove(lockPath);
@@ -429,7 +452,7 @@ bool UpdateManager::applyUpdate() {
 // Helper Implementations
 // ----------------------
 
-bool UpdateManager::writeAgentParams(const QString& filePath, bool hasNvidia) const {
+bool UpdateManager::writeAgentParams(const QString& filePath, bool hasNvidia, const QString& efiDevice) const {
     // Build the URLs that the agent needs.
     QString varLibUrl = QStringLiteral(
         "https://raw.githubusercontent.com/Nitrux/storage/master/Other/var-lib-dpkg-%1.tar.xz")
@@ -458,6 +481,7 @@ bool UpdateManager::writeAgentParams(const QString& filePath, bool hasNvidia) co
     s.setValue(QStringLiteral("NUTS_CCU_CHECKSUM"),   m_queryData.value(QStringLiteral("NUTS_CCU_CHECKSUM")));
     s.setValue(QStringLiteral("DOWNLOAD_DIR"),        Config::instance().downloadDir());
     s.setValue(QStringLiteral("SQUASHFS_DIR"),        Config::instance().squashfsDir());
+    s.setValue(QStringLiteral("EFI_DEVICE"),          efiDevice);
     s.setValue(QStringLiteral("HAS_NVIDIA"),          hasNvidia);
     // Mirrors are pipe-delimited in a single value to keep the INI format simple.
     s.setValue(QStringLiteral("MIRRORS"),             m_mirrorList.join(QStringLiteral("|")));
@@ -477,7 +501,23 @@ bool UpdateManager::writeAgentParams(const QString& filePath, bool hasNvidia) co
     return true;
 }
 
-void UpdateManager::parseAndRelayAgentOutput(const QString& output) {
+void UpdateManager::relayAgentProgress(const QString& line) {
+    static const QString progressPrefix = QStringLiteral("[NUTS-AGENT] PROGRESS: ");
+    if (!line.startsWith(progressPrefix))
+        return;
+
+    QString rest = line.mid(progressPrefix.length()).trimmed();
+    int spaceIdx = rest.indexOf(QChar(u' '));
+    if (spaceIdx <= 0)
+        return;
+
+    bool ok = false;
+    int pct = rest.left(spaceIdx).toInt(&ok);
+    if (ok)
+        Q_EMIT updateProgress(pct, rest.mid(spaceIdx + 1));
+}
+
+bool UpdateManager::parseAndRelayAgentOutput(const QString& output, bool relayProgress) {
     // The agent writes structured lines to stdout:
     //   [NUTS-AGENT] PROGRESS: <pct> <message>
     //   [NUTS-AGENT] INFO: <message>
@@ -485,27 +525,29 @@ void UpdateManager::parseAndRelayAgentOutput(const QString& output) {
     //   [NUTS-AGENT] WARNING: <message>
     //   [NUTS-AGENT] ERROR: <message>
     //   [NUTS-AGENT] DEBUG: <message>
+    //   [NUTS-AGENT] RESULT: SUCCESS 0
+    //   [NUTS-AGENT] RESULT: FAILURE <code>
 
     static const QString progressPrefix = QStringLiteral("[NUTS-AGENT] PROGRESS: ");
+    static const QString resultPrefix = QStringLiteral("[NUTS-AGENT] RESULT: ");
+    bool resultSeen = false;
+    bool resultSucceeded = false;
 
     for (const QString& line : output.split(QStringLiteral("\n"), Qt::SkipEmptyParts)) {
         if (line.startsWith(progressPrefix)) {
-            // Parse "N message" from the remainder.
-            QString rest = line.mid(progressPrefix.length()).trimmed();
-            int spaceIdx = rest.indexOf(QChar(u' '));
-            if (spaceIdx > 0) {
-                bool ok;
-                int pct = rest.left(spaceIdx).toInt(&ok);
-                if (ok) {
-                    QString msg = rest.mid(spaceIdx + 1);
-                    Q_EMIT updateProgress(pct, msg);
-                }
-            }
+            if (relayProgress)
+                relayAgentProgress(line);
+        } else if (line.startsWith(resultPrefix)) {
+            resultSeen = true;
+            resultSucceeded = line.mid(resultPrefix.length()).trimmed() == QStringLiteral("SUCCESS 0");
+            Logger::instance().info(QStringLiteral("Agent: ") + line);
         } else if (line.contains(QStringLiteral("[NUTS-AGENT]"))) {
             // Forward all other agent log lines verbatim.
             Logger::instance().info(QStringLiteral("Agent: ") + line);
         }
     }
+
+    return resultSeen && resultSucceeded;
 }
 
 bool UpdateManager::downloadUpdateArchive(const QString& url, const QString& destination) {

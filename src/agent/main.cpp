@@ -9,6 +9,15 @@
 #include <iostream>
 #include <unistd.h>  // ::getuid()
 
+static int finishAgent(int result)
+{
+    std::cout << "[NUTS-AGENT] RESULT: "
+              << (result == 0 ? "SUCCESS" : "FAILURE")
+              << " " << result << static_cast<char>(10);
+    std::cout.flush();
+    return result;
+}
+
 int main(int argc, char* argv[])
 {
     // QCoreApplication is required by QProcess / QFile but we never call
@@ -19,7 +28,7 @@ int main(int argc, char* argv[])
 
     if (::getuid() != 0) {
         std::cerr << "[NUTS-AGENT] ERROR: Must run as root\n";
-        return 127;
+        return finishAgent(127);
     }
 
     // Param file path: first CLI arg, or the default written by UpdateManager.
@@ -30,7 +39,7 @@ int main(int argc, char* argv[])
     if (!QFile::exists(paramFile)) {
         std::cerr << "[NUTS-AGENT] ERROR: Parameter file not found: "
                   << paramFile.toStdString() << "\n";
-        return 126;
+        return finishAgent(126);
     }
 
     QSettings s(paramFile, QSettings::IniFormat);
@@ -46,6 +55,7 @@ int main(int argc, char* argv[])
     params.ccuChecksum      = s.value("Agent/NUTS_CCU_CHECKSUM").toString();
     params.downloadDir      = s.value("Agent/DOWNLOAD_DIR").toString();
     params.squashfsDir      = s.value("Agent/SQUASHFS_DIR").toString();
+    params.efiDevice       = s.value("Agent/EFI_DEVICE").toString();
     params.hasNvidia        = s.value("Agent/HAS_NVIDIA", false).toBool();
 
     // Mirrors are stored pipe-delimited in a single INI value.
@@ -63,7 +73,7 @@ int main(int argc, char* argv[])
         std::cerr << "[NUTS-AGENT] ERROR: Required parameters missing in "
                   << paramFile.toStdString()
                   << " (need MINTARGET, OTA_CHECKSUM, MIRRORS, DOWNLOAD_DIR, SQUASHFS_DIR)\n";
-        return 125;
+        return finishAgent(125);
     }
 
     // Install SIGINT / SIGTERM handlers so that a kill or Ctrl+C triggers
@@ -72,5 +82,5 @@ int main(int argc, char* argv[])
     NutsAgent::installSignalHandlers();
 
     NutsAgent::Agent agent(params);
-    return agent.run();
+    return finishAgent(agent.run());
 }

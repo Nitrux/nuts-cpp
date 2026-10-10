@@ -64,10 +64,12 @@ private:
     bool checkDiskSpace();
 
     // Write the parameter file for nuts-agent and launch it in a single chroot session.
-    bool writeAgentParams(const QString& filePath, bool hasNvidia) const;
+    bool writeAgentParams(const QString& filePath, bool hasNvidia, const QString& efiDevice) const;
 
-    // Parse structured output from nuts-agent and relay progress signals.
-    void parseAndRelayAgentOutput(const QString& output);
+    // Parse structured output from nuts-agent, relay progress signals, and
+    // return true only when the agent explicitly reports successful completion.
+    void relayAgentProgress(const QString& line);
+    bool parseAndRelayAgentOutput(const QString& output, bool relayProgress = true);
 
     // Version comparison helper
     static int compareVersions(const QString& version1, const QString& version2);

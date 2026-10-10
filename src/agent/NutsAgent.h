@@ -38,6 +38,7 @@ struct AgentParams {
     QString ccuChecksum;
     QString downloadDir;
     QString squashfsDir;
+    QString efiDevice;
     QStringList mirrors;
     bool hasNvidia{false};
 };
@@ -60,7 +61,8 @@ public:
 private:
     // --- Update steps (mirror the original UpdateManager private helpers) ---
 
-    // Mount /home (NX_HOME) and /var/lib (NX_VAR_LIB) + create working dirs.
+    // Mount /home (NX_HOME), /var/lib (NX_VAR_LIB), and /boot/efi when
+    // running in UEFI mode, then create working dirs.
     bool prepareSystemPartitions();
 
     // Download nuts-ota.squashfs from mirrors, verify SHA-256.
@@ -84,7 +86,7 @@ private:
     // Create nx-pkgmgr-policy symlinks for apt* and dpkg*.
     void installPolicySymlinks();
 
-    // Unmount squashfsDir, /home, /var/lib, /dev.  Called on all exit paths.
+    // Unmount mounts created by the agent.  Called on all exit paths.
     void cleanup();
 
     // --- Utilities ---
@@ -116,6 +118,7 @@ private:
     void progress(int pct, const char* msg);
 
     AgentParams m_params;
+    bool m_efiMountedByAgent{false};
 
     // Set by prepareUpdateTools(), used by performPackageUpdates().
     QString m_pkgManagerPath;

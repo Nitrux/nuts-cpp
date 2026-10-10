@@ -16,6 +16,7 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <limits>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -305,13 +306,86 @@ bool SystemInterface::executeInOverlay(const QStringList& command, QString& outp
 
 bool SystemInterface::executeInOverlayAgent(const QStringList& command,
                                             QString& output, QString& error,
-                                            int timeout) {
+                                            int timeout,
+                                            const std::function<void(const QString&)>& outputHandler) {
     // One long-running call that executes nuts-agent inside the chroot.
     // The extended timeout (default 2 hours) covers the full OTA pipeline:
     // partition mounting, multi-gigabyte download, dpkg unpack + configure.
     Logger::instance().info(
         QStringLiteral("Launching nuts-agent in chroot (timeout %1s)").arg(timeout / 1000));
-    return executeCommand("/usr/sbin/overlayroot-chroot", command, output, error, timeout);
+
+    const QString program = QStringLiteral("/usr/sbin/overlayroot-chroot");
+    const QString cmdLine = program + (command.isEmpty() ? QString() : QStringLiteral(" ") + command.join(QStringLiteral(" ")));
+    Logger::instance().debug(QStringLiteral("EXEC: ") + cmdLine);
+
+    output.clear();
+    error.clear();
+
+    QProcess process;
+    process.start(program, command);
+
+    if (!process.waitForStarted()) {
+        error = process.errorString();
+        Logger::instance().debug(QStringLiteral("EXEC START FAILED: ") + cmdLine + QStringLiteral(": ") + error);
+        return false;
+    }
+
+    QByteArray pendingOutput;
+    auto drainOutput = [&]() {
+        const QByteArray chunk = process.readAllStandardOutput();
+        if (chunk.isEmpty())
+            return;
+
+        output += QString::fromUtf8(chunk);
+        pendingOutput += chunk;
+
+        qsizetype newlineIndex = -1;
+        while ((newlineIndex = pendingOutput.indexOf('\n')) >= 0) {
+            QByteArray line = pendingOutput.left(newlineIndex);
+            pendingOutput.remove(0, newlineIndex + 1);
+            if (line.endsWith('\r'))
+                line.chop(1);
+            if (outputHandler)
+                outputHandler(QString::fromUtf8(line));
+        }
+    };
+
+    QElapsedTimer timer;
+    timer.start();
+    while (process.state() != QProcess::NotRunning) {
+        const qint64 remaining = static_cast<qint64>(timeout) - timer.elapsed();
+        if (remaining <= 0) {
+            process.kill();
+            process.waitForFinished();
+            drainOutput();
+            error = QStringLiteral("Command timed out");
+            Logger::instance().debug(QStringLiteral("EXEC TIMEOUT: ") + cmdLine);
+            return false;
+        }
+
+        process.waitForReadyRead(static_cast<int>(qMin<qint64>(remaining, std::numeric_limits<int>::max())));
+        drainOutput();
+
+        // Drain stderr while the agent is running so a verbose child cannot
+        // block on a full pipe.  It is retained for the caller after exit.
+        error += QString::fromUtf8(process.readAllStandardError());
+    }
+
+    process.waitForFinished();
+    drainOutput();
+    error += QString::fromUtf8(process.readAllStandardError());
+
+    if (!pendingOutput.isEmpty() && outputHandler)
+        outputHandler(QString::fromUtf8(pendingOutput));
+
+    const int exitCode = process.exitCode();
+    if (!output.trimmed().isEmpty())
+        Logger::instance().debug(QStringLiteral("STDOUT: ") + output.trimmed());
+    if (!error.trimmed().isEmpty())
+        Logger::instance().debug(QStringLiteral("STDERR: ") + error.trimmed());
+    Logger::instance().debug(QStringLiteral("EXIT(%1): %2").arg(exitCode).arg(cmdLine));
+
+    return exitCode == 0;
 }
 
 bool SystemInterface::downloadFile(const QString& url, const QString& destination) {
