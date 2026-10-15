@@ -7,7 +7,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QIcon>
-#include <KLocalizedContext>
+#include <KLocalizedQmlContext>
 #include <KLocalizedString>
 #include <MauiKit4/Core/mauiapp.h>
 #include <KAboutData>
@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
     // 8. SETUP ENGINE
     QQmlApplicationEngine engine;
 
-    engine.rootContext()->setContextObject(new KLocalizedContext(&engine));
+    engine.rootContext()->setContextObject(new KLocalizedQmlContext(&engine));
     engine.rootContext()->setContextProperty(QStringLiteral("nutsClient"), &nutsClient);
 
     const QUrl url(QStringLiteral("qrc:/main.qml"));

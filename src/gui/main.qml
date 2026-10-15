@@ -240,53 +240,17 @@ Maui.ApplicationWindow {
             }
         }
 
-        Maui.ScrollColumn {
+        Maui.Holder {
             anchors.fill: parent
-            spacing: Maui.Style.space.big
             visible: !((debugMode && (debugSimulatingUpdate || debugSimulatingRescue)) || nutsClient.busy)
                      && !debugUpdateAvailable
-
-            Maui.SectionHeader {
-                Layout.fillWidth: true
-                text1: qsTr("System Status")
-                text2: qsTr("Current system information and update status.")
-                label2.wrapMode: Text.Wrap
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                color: Maui.Theme.alternateBackgroundColor
-                radius: Maui.Style.radiusV
-                border.color: Maui.Theme.backgroundColor
-                border.width: 1
-                implicitHeight: updateStatusLayout.implicitHeight + Maui.Style.contentMargins * 2
-
-                ColumnLayout {
-                    id: updateStatusLayout
-                    anchors.fill: parent
-                    anchors.margins: Maui.Style.contentMargins
-                    spacing: Maui.Style.space.small
-
-                    Maui.SectionHeader {
-                        Layout.fillWidth: true
-                        text1: qsTr("Update Status")
-                        text2: qsTr("Current update availability and helper connection state.")
-                        label2.wrapMode: Text.Wrap
-                    }
-
-                    Maui.Holder {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 300
-                        emoji: nutsClient.connected ? "dialog-ok-apply" : "network-disconnect"
-                        title: nutsClient.connected
-                               ? qsTr("No Updates Available")
-                               : qsTr("Helper Disconnected")
-                        body: nutsClient.connected
-                              ? qsTr("Your system is up to date.")
-                              : qsTr("The update helper service is not running.")
-                    }
-                }
-            }
+            emoji: nutsClient.connected ? "dialog-ok-apply" : "network-disconnect"
+            title: nutsClient.connected
+                   ? qsTr("No Updates Available")
+                   : qsTr("Helper Disconnected")
+            body: nutsClient.connected
+                  ? qsTr("Your system is up to date.")
+                  : qsTr("The update helper service is not running.")
         }
 
         Maui.ScrollColumn {

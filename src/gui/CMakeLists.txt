@@ -21,6 +21,7 @@ target_link_libraries(nuts-gui
         Qt6::Network
         KF6::CoreAddons
         KF6::I18n
+        KF6::I18nQml
         KF6::Notifications
         KF6::WindowSystem
         MauiKit4
