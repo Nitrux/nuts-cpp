@@ -32,7 +32,7 @@ Priority: optional
 Architecture: ${TARGET_ARCH}
 Maintainer: uri_herrera@nxos.org
 Provides: nuts-cpp
-Depends: libc6,libqt6core6,libqt6dbus6,libqt6quick6,libqt6qml6,libkf6coreaddons6,libkf6i18n6,libkf6notifications6,mauikit (>= 4.0.5),polkitd,xfsdump,zstd,axel,wget,nx-overlayroot
+Depends: libc6,libqt6core6,libqt6dbus6,libqt6quick6,libqt6qml6,qml6-module-qtquick,qml6-module-qtquick-controls,qml6-module-qtquick-layouts,libkf6coreaddons6,libkf6i18n6,libkf6notifications6,mauikit (>= 4.0.5),polkitd,xfsdump,zstd,axel,wget,nx-overlayroot
 Description: nuts-cpp
  nuts-cpp
 CONTROL
