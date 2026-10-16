@@ -69,7 +69,8 @@ find_package(KF6 ${REQUIRED_KF6_VERSION} REQUIRED COMPONENTS
     WindowSystem
 )
 
-find_package(MauiKit4 ${REQUIRED_MAUIKIT_VERSION} REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(MAUIKIT4 REQUIRED IMPORTED_TARGET MauiKit4>=${REQUIRED_MAUIKIT_VERSION})
 
 ecm_find_qmlmodule(org.mauikit.controls 1.0)
 
@@ -77,13 +78,13 @@ find_package(PolkitQt6-1 REQUIRED)
 
 if(ECM_SOURCE_UNDER_VERSION_CONTROL)
     execute_process(
-        COMMAND git rev-parse --abbrev-ref HEAD
+        COMMAND git -c "safe.directory=${CMAKE_SOURCE_DIR}" rev-parse --abbrev-ref HEAD
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         OUTPUT_VARIABLE GIT_BRANCH
         OUTPUT_STRIP_TRAILING_WHITESPACE)
 
     execute_process(
-        COMMAND git rev-parse --short HEAD
+        COMMAND git -c "safe.directory=${CMAKE_SOURCE_DIR}" rev-parse --short HEAD
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         OUTPUT_VARIABLE GIT_COMMIT_HASH
         OUTPUT_STRIP_TRAILING_WHITESPACE)
