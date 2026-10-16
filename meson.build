@@ -64,7 +64,7 @@ install_subdir('include/nuts', install_dir: get_option('includedir'))
 
 agent = executable('nuts-agent', files('src/agent/main.cpp', 'src/agent/NutsAgent.cpp'), dependencies: [qt], include_directories: include_directories('include'), cpp_args: cpp_args, install: true, install_dir: get_option('sbindir'))
 
-qdbusxml2cpp = find_program('qdbusxml2cpp')
+qdbusxml2cpp = find_program('qdbusxml2cpp', dirs: ['/usr/lib/qt6/bin', '/usr/lib/qt6/libexec'])
 helper_adaptor = custom_target('nuts-helper-dbus', input: 'data/dbus/org.nxos.nuts.xml', output: ['nutsadaptor.cpp', 'nutsadaptor.h'], command: [qdbusxml2cpp, '-a', 'nutsadaptor', '@INPUT@'])
 helper_moc = qt6.preprocess(moc_headers: ['src/helper/NutsHelper.h', helper_adaptor[1]])
 helper = executable('nuts-helper', files('src/helper/main.cpp', 'src/helper/NutsHelper.cpp') + helper_adaptor + helper_moc, dependencies: [qt, polkit, kf6_core], link_with: nuts, include_directories: include_directories('include'), cpp_args: cpp_args, install: true, install_dir: get_option('libexecdir'))
