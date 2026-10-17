@@ -24,7 +24,7 @@ target_link_libraries(nuts-gui
         KF6::I18nQml
         KF6::Notifications
         KF6::WindowSystem
-        PkgConfig::MAUIKIT4
+        MauiKit4
 )
 
 install(TARGETS nuts-gui

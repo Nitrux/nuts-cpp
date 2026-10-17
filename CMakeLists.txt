@@ -52,6 +52,9 @@ include(ECMSetupVersion)
 include(ECMSourceVersionControl)
 include(FeatureSummary)
 
+set(QT_NO_PRIVATE_MODULE_WARNING ON CACHE BOOL
+    "MauiKit uses Qt's private WaylandClient API" FORCE)
+
 find_package(Qt6 ${REQUIRED_QT_VERSION} REQUIRED COMPONENTS
     Core
     Quick
@@ -69,8 +72,7 @@ find_package(KF6 ${REQUIRED_KF6_VERSION} REQUIRED COMPONENTS
     WindowSystem
 )
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(MAUIKIT4 REQUIRED IMPORTED_TARGET MauiKit4>=${REQUIRED_MAUIKIT_VERSION})
+find_package(MauiKit4 ${REQUIRED_MAUIKIT_VERSION} REQUIRED)
 
 ecm_find_qmlmodule(org.mauikit.controls 1.0)
 
@@ -119,6 +121,17 @@ option(BUILD_TESTING "Build tests" OFF)
 # Add subdirectories
 add_subdirectory(src)
 add_subdirectory(data)
+
+if(NOT TARGET uninstall)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+        IMMEDIATE
+        @ONLY)
+
+    add_custom_target(uninstall
+        COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
+endif()
 
 # Feature summary
 feature_summary(WHAT ALL INCLUDE_QUIET_PACKAGES FATAL_ON_MISSING_REQUIRED_PACKAGES)
