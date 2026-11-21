@@ -18,3 +18,10 @@ target_link_libraries(nuts-agent
 install(TARGETS nuts-agent
     RUNTIME DESTINATION ${CMAKE_INSTALL_SBINDIR}
 )
+
+target_precompile_headers(nuts-agent PRIVATE
+    <QDebug>
+    <QFileInfo>
+    <QObject>
+    <QString>
+)

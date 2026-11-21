@@ -24,3 +24,10 @@ target_link_libraries(nuts-helper
 install(TARGETS nuts-helper
     RUNTIME DESTINATION ${KDE_INSTALL_LIBEXECDIR}
 )
+
+target_precompile_headers(nuts-helper PRIVATE
+    <QDebug>
+    <QFileInfo>
+    <QObject>
+    <QString>
+)

@@ -34,3 +34,11 @@ install(TARGETS nuts-gui
 install(FILES org.nxos.nuts.desktop
     DESTINATION ${KDE_INSTALL_APPDIR}
 )
+
+target_precompile_headers(nuts-gui PRIVATE
+    <QDebug>
+    <QFileInfo>
+    <QGuiApplication>
+    <QQmlEngine>
+    <QQuickWindow>
+)

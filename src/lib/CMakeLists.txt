@@ -52,3 +52,10 @@ install(TARGETS nuts
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/nuts
     DESTINATION ${KDE_INSTALL_INCLUDEDIR}
 )
+
+target_precompile_headers(nuts PRIVATE
+    <QDebug>
+    <QFileInfo>
+    <QObject>
+    <QString>
+)
