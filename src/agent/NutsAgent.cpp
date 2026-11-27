@@ -700,7 +700,7 @@ void Agent::installPolicySymlinks()
         QStringLiteral("apt"), QStringLiteral("apt-cache"), QStringLiteral("apt-cdrom"), QStringLiteral("apt-config"), QStringLiteral("apt-get"), QStringLiteral("apt-mark")
     };
     for (const QString& tool : aptTools)
-        exec("/usr/bin/ln", QStringList{QStringLiteral("-sf"), QStringLiteral("/usr/bin/nx-pkgmgr-policy"), QStringLiteral("/usr/bin/") + tool});
+        exec("/usr/bin/ln", QStringList{QStringLiteral("-sf"), QStringLiteral("/usr/bin/hcvl"), QStringLiteral("/usr/bin/") + tool});
 
     const QStringList dpkgTools = {
         QStringLiteral("dpkg"), QStringLiteral("dpkg-deb"), QStringLiteral("dpkg-divert"), QStringLiteral("dpkg-maintscript-helper"), QStringLiteral("dpkg-query"),
@@ -713,7 +713,7 @@ void Agent::installPolicySymlinks()
         QStringLiteral("dpkg-vendor")
     };
     for (const QString& tool : dpkgTools)
-        exec("/usr/bin/ln", QStringList{QStringLiteral("-sf"), QStringLiteral("/usr/bin/nx-pkgmgr-policy"), QStringLiteral("/usr/bin/") + tool});
+        exec("/usr/bin/ln", QStringList{QStringLiteral("-sf"), QStringLiteral("/usr/bin/hcvl"), QStringLiteral("/usr/bin/") + tool});
 
     log("INFO", "Policy symlinks installed.");
 }

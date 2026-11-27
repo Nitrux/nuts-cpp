@@ -83,7 +83,7 @@ private:
     // Download nuts-cpp-ccu cleanup script, verify, execute.
     bool runCleanupCrew();
 
-    // Create nx-pkgmgr-policy symlinks for apt* and dpkg*.
+    // Create hcvl symlinks for apt* and dpkg*.
     void installPolicySymlinks();
 
     // Unmount mounts created by the agent.  Called on all exit paths.
