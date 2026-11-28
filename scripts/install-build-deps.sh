@@ -49,6 +49,7 @@ $APT_COMMAND install -y --no-install-recommends \
     qt6-base-dev \
     qt6-base-dev-tools \
     qt6-declarative-dev \
+    qt6-multimedia-dev \
     qt6-svg-dev \
     qt6-wayland-dev
 
